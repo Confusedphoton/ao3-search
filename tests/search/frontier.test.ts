@@ -11,6 +11,7 @@ describe('frontier', () => {
       { id: 3, kind: NodeKind.Work, key: '2', estimatedFreq: 1, calibratedFreq: null, explored: false },
     ],
     edges: [{ workNodeId: 1, tagNodeId: 2 }, { workNodeId: 3, tagNodeId: 2 }],
+    authorEdges: [],
   };
 
   it('includes only unexplored nodes sorted by authority', () => {

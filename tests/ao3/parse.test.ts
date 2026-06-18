@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { parseTagPageFromHtml, parseWorkPageFromHtml } from '@/src/ao3';
+import { parseAuthorPageFromHtml, parseTagPageFromHtml, parseWorkPageFromHtml } from '@/src/ao3';
 
 const workHtml = `
 <html><body>
   <h2 class="title heading">Test Work</h2>
   <dl class="work meta group">
+    <dd class="users"><a href="/users/AuthorName">Author Name</a></dd>
     <dd class="tags"><a class="tag" href="/tags/Harry%20Potter">Harry Potter</a></dd>
     <dd class="tags"><a class="tag" href="/tags/Fluff">Fluff</a></dd>
   </dl>
@@ -23,8 +24,21 @@ const tagHtml = `
   </ol>
 </body></html>`;
 
+const authorHtml = `
+<html><body>
+  <h2 class="heading">Author Name - Works</h2>
+  <ol class="work index group">
+    <li class="work blurb">
+      <h4 class="heading"><a href="/works/11111">Fic A</a></h4>
+    </li>
+    <li class="work blurb">
+      <h4 class="heading"><a href="/works/22222">Fic B</a></h4>
+    </li>
+  </ol>
+</body></html>`;
+
 describe('AO3 parsers', () => {
-  it('parses work pages', () => {
+  it('parses work pages including authors', () => {
     const parsed = parseWorkPageFromHtml(
       workHtml,
       'https://archiveofourown.org/works/42',
@@ -34,6 +48,7 @@ describe('AO3 parsers', () => {
       workId: '42',
       title: 'Test Work',
       tags: ['Harry Potter', 'Fluff'],
+      authors: [{ key: 'AuthorName', displayName: 'Author Name' }],
     });
   });
 
@@ -47,5 +62,34 @@ describe('AO3 parsers', () => {
       tagName: 'Harry Potter',
       workIds: ['12345', '67890'],
     });
+  });
+
+  it('parses author listing pages', () => {
+    const parsed = parseAuthorPageFromHtml(
+      authorHtml,
+      'https://archiveofourown.org/users/AuthorName/works',
+    );
+    expect(parsed).toMatchObject({
+      kind: 'author',
+      authorKey: 'AuthorName',
+      displayName: 'Author Name',
+      workIds: ['11111', '22222'],
+    });
+  });
+
+  it('parses pseud author keys from work links', () => {
+    const pseudHtml = `
+      <html><body>
+        <dl class="work meta group">
+          <dd class="users"><a href="/users/Lake/pseuds/PseudName">Pseud Name</a></dd>
+        </dl>
+      </body></html>`;
+    const parsed = parseWorkPageFromHtml(
+      pseudHtml,
+      'https://archiveofourown.org/works/99',
+    );
+    expect(parsed?.authors).toEqual([
+      { key: 'Lake/pseuds/PseudName', displayName: 'Pseud Name' },
+    ]);
   });
 });

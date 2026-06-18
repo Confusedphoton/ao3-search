@@ -1,9 +1,24 @@
 import type { NegativeSeed } from '../messaging/types';
 import { REQUEST_INTERVAL_MS, REQUEST_JITTER_MS, MAX_FETCH_RETRIES } from '../config/constants';
-import { parseTagPageFromHtml, parseWorkPageFromHtml, tagWorksUrl, workUrl } from '../ao3';
+import {
+  authorWorksUrl,
+  parseAuthorPageFromHtml,
+  parseTagPageFromHtml,
+  parseWorkPageFromHtml,
+  tagWorksUrl,
+  workUrl,
+} from '../ao3';
 import type { GraphNode } from '../graph/types';
 import { NodeKind } from '../graph/types';
-import { getTagNode, getWorkNode, markNodeExplored, mergeTagPage, mergeWorkPage } from '../storage/db';
+import {
+  getAuthorNode,
+  getTagNode,
+  getWorkNode,
+  markNodeExplored,
+  mergeAuthorPage,
+  mergeTagPage,
+  mergeWorkPage,
+} from '../storage/db';
 
 export interface FetchResult {
   html: string;
@@ -39,6 +54,7 @@ export class RequestScheduler {
       workId: parsed.workId,
       title: parsed.title,
       tags: parsed.tags,
+      authors: parsed.authors,
       explored: true,
     });
   }
@@ -48,6 +64,21 @@ export class RequestScheduler {
 
     if (node.kind === NodeKind.Work) {
       await this.fetchWork(node.key);
+      return;
+    }
+
+    if (node.kind === NodeKind.Author) {
+      const url = authorWorksUrl(node.key);
+      const html = await this.fetchWithRetry(url);
+      const parsed = parseAuthorPageFromHtml(html, url);
+      if (!parsed) throw new Error(`Failed to parse author page ${node.key}`);
+      await mergeAuthorPage({
+        authorKey: parsed.authorKey,
+        displayName: parsed.displayName,
+        workCount: parsed.workCount,
+        workIds: parsed.workIds,
+        explored: true,
+      });
       return;
     }
 
@@ -127,4 +158,4 @@ export async function resolveNode(nodeId: number, snapshotNodes: GraphNode[]): P
   return snapshotNodes.find((n) => n.id === nodeId) ?? null;
 }
 
-export { getWorkNode, getTagNode, markNodeExplored };
+export { getAuthorNode, getWorkNode, getTagNode, markNodeExplored };

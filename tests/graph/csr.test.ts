@@ -23,6 +23,7 @@ describe('buildCSR', () => {
         { workNodeId: 1, tagNodeId: 4 },
         { workNodeId: 2, tagNodeId: 3 },
       ],
+      authorEdges: [],
     };
 
     const csr = buildCSR(snapshot);

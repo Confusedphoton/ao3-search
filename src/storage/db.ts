@@ -1,5 +1,7 @@
 import { DB_NAME, DB_VERSION } from '../config/constants';
 import type {
+  AuthorMergeInput,
+  AuthorWorkEdge,
   GraphEdge,
   GraphNode,
   GraphSnapshot,
@@ -30,8 +32,10 @@ function openDb(): Promise<IDBDatabase> {
   dbPromise = new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
 
-    request.onupgradeneeded = () => {
+    request.onupgradeneeded = (event) => {
       const db = request.result;
+      const oldVersion = event.oldVersion;
+
       if (!db.objectStoreNames.contains('meta')) {
         db.createObjectStore('meta', { keyPath: 'key' });
       }
@@ -47,6 +51,14 @@ function openDb(): Promise<IDBDatabase> {
         });
         store.createIndex('byWork', 'workNodeId', { unique: false });
         store.createIndex('byTag', 'tagNodeId', { unique: false });
+      }
+
+      if (oldVersion < 2 && !db.objectStoreNames.contains('authorEdges')) {
+        const store = db.createObjectStore('authorEdges', {
+          keyPath: ['workNodeId', 'authorNodeId'],
+        });
+        store.createIndex('byWork', 'workNodeId', { unique: false });
+        store.createIndex('byAuthor', 'authorNodeId', { unique: false });
       }
     };
 
@@ -151,6 +163,12 @@ async function addEdge(workNodeId: number, tagNodeId: number): Promise<void> {
   });
 }
 
+async function addAuthorEdge(workNodeId: number, authorNodeId: number): Promise<void> {
+  await tx('authorEdges', 'readwrite', async (transaction) => {
+    transaction.objectStore('authorEdges').put({ workNodeId, authorNodeId } satisfies AuthorWorkEdge);
+  });
+}
+
 function idbGet<T>(store: IDBObjectStore, key: IDBValidKey): Promise<T | null> {
   return new Promise((resolve, reject) => {
     const req = store.get(key);
@@ -181,6 +199,15 @@ export async function mergeWorkPage(input: WorkMergeInput): Promise<GraphNode> {
     await incrementTagEstimate(tagNode.id);
   }
 
+  for (const author of input.authors) {
+    const authorNode = await upsertNode(NodeKind.Author, author.key, {
+      title: author.displayName,
+      estimatedFreq: 1,
+    });
+    await addAuthorEdge(workNode.id, authorNode.id);
+    await incrementAuthorEstimate(authorNode.id);
+  }
+
   return workNode;
 }
 
@@ -188,6 +215,16 @@ async function incrementTagEstimate(tagNodeId: number): Promise<void> {
   await tx('nodes', 'readwrite', async (transaction) => {
     const store = transaction.objectStore('nodes');
     const node = await idbGet<GraphNode>(store, tagNodeId);
+    if (!node) return;
+    node.estimatedFreq += 1;
+    store.put(node);
+  });
+}
+
+async function incrementAuthorEstimate(authorNodeId: number): Promise<void> {
+  await tx('nodes', 'readwrite', async (transaction) => {
+    const store = transaction.objectStore('nodes');
+    const node = await idbGet<GraphNode>(store, authorNodeId);
     if (!node) return;
     node.estimatedFreq += 1;
     store.put(node);
@@ -211,6 +248,25 @@ export async function mergeTagPage(input: TagMergeInput): Promise<GraphNode> {
   return tagNode;
 }
 
+export async function mergeAuthorPage(input: AuthorMergeInput): Promise<GraphNode> {
+  const authorNode = await upsertNode(NodeKind.Author, input.authorKey, {
+    title: input.displayName,
+    calibratedFreq: input.workCount,
+    explored: input.explored ?? true,
+  });
+
+  for (const workId of input.workIds) {
+    const workNode = await upsertNode(NodeKind.Work, workId, {
+      title: `Work ${workId}`,
+      explored: false,
+    });
+    await addAuthorEdge(workNode.id, authorNode.id);
+    await incrementAuthorEstimate(authorNode.id);
+  }
+
+  return authorNode;
+}
+
 export async function markNodeExplored(nodeId: number): Promise<void> {
   await tx('nodes', 'readwrite', async (transaction) => {
     const store = transaction.objectStore('nodes');
@@ -229,20 +285,26 @@ export async function getTagNode(tagName: string): Promise<GraphNode | null> {
   return getNodeByKey(NodeKind.Tag, tagName);
 }
 
+export async function getAuthorNode(authorKey: string): Promise<GraphNode | null> {
+  return getNodeByKey(NodeKind.Author, authorKey);
+}
+
 export async function loadGraphSnapshot(): Promise<GraphSnapshot> {
-  return tx(['nodes', 'edges'], 'readonly', async (transaction) => {
+  return tx(['nodes', 'edges', 'authorEdges'], 'readonly', async (transaction) => {
     const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
     const edges = await idbGetAll<GraphEdge>(transaction.objectStore('edges'));
-    return { nodes, edges };
+    const authorEdges = await idbGetAll<AuthorWorkEdge>(transaction.objectStore('authorEdges'));
+    return { nodes, edges, authorEdges };
   });
 }
 
 export async function clearGraph(): Promise<void> {
-  await tx(['meta', 'nodes', 'keyIndex', 'edges'], 'readwrite', async (transaction) => {
+  await tx(['meta', 'nodes', 'keyIndex', 'edges', 'authorEdges'], 'readwrite', async (transaction) => {
     transaction.objectStore('meta').clear();
     transaction.objectStore('nodes').clear();
     transaction.objectStore('keyIndex').clear();
     transaction.objectStore('edges').clear();
+    transaction.objectStore('authorEdges').clear();
   });
 }
 

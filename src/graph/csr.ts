@@ -9,11 +9,12 @@ export interface CSRGraph {
   edgeWeights: number[];
   workIndices: number[];
   tagIndices: number[];
+  authorIndices: number[];
   indexByNodeId: Map<number, number>;
   nodeByIndex: GraphNode[];
 }
 
-function tagFrequency(node: GraphNode): number {
+function hubFrequency(node: GraphNode): number {
   return node.calibratedFreq ?? node.estimatedFreq ?? 1;
 }
 
@@ -44,12 +45,34 @@ export function buildCSR(snapshot: GraphSnapshot): CSRGraph {
     const tagNode = nodeById.get(edge.tagNodeId);
     if (!tagNode) continue;
 
-    const wToT = tagWeight(tagFrequency(tagNode));
+    const wToT = tagWeight(hubFrequency(tagNode));
     const connectedWorks = worksByTag.get(edge.tagNodeId) ?? [];
     const tToW = connectedWorks.length > 0 ? 1 / connectedWorks.length : 1;
 
     adjacency[workIndex].push({ to: tagIndex, weight: wToT });
     adjacency[tagIndex].push({ to: workIndex, weight: tToW });
+  }
+
+  const worksByAuthor = new Map<number, number[]>();
+  for (const edge of snapshot.authorEdges) {
+    if (!worksByAuthor.has(edge.authorNodeId)) worksByAuthor.set(edge.authorNodeId, []);
+    worksByAuthor.get(edge.authorNodeId)!.push(edge.workNodeId);
+  }
+
+  for (const edge of snapshot.authorEdges) {
+    const workIndex = indexByNodeId.get(edge.workNodeId);
+    const authorIndex = indexByNodeId.get(edge.authorNodeId);
+    if (workIndex === undefined || authorIndex === undefined) continue;
+
+    const authorNode = nodeById.get(edge.authorNodeId);
+    if (!authorNode) continue;
+
+    const wToA = tagWeight(hubFrequency(authorNode));
+    const connectedWorks = worksByAuthor.get(edge.authorNodeId) ?? [];
+    const aToW = connectedWorks.length > 0 ? 1 / connectedWorks.length : 1;
+
+    adjacency[workIndex].push({ to: authorIndex, weight: wToA });
+    adjacency[authorIndex].push({ to: workIndex, weight: aToW });
   }
 
   const offsets: number[] = [0];
@@ -73,9 +96,11 @@ export function buildCSR(snapshot: GraphSnapshot): CSRGraph {
   const nodeByIndex = nodeIds.map((id) => nodeById.get(id)!);
   const workIndices: number[] = [];
   const tagIndices: number[] = [];
+  const authorIndices: number[] = [];
   nodeByIndex.forEach((node, index) => {
     if (node.kind === NodeKind.Work) workIndices.push(index);
-    else tagIndices.push(index);
+    else if (node.kind === NodeKind.Tag) tagIndices.push(index);
+    else authorIndices.push(index);
   });
 
   return {
@@ -86,6 +111,7 @@ export function buildCSR(snapshot: GraphSnapshot): CSRGraph {
     edgeWeights,
     workIndices,
     tagIndices,
+    authorIndices,
     indexByNodeId,
     nodeByIndex,
   };

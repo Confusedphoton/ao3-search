@@ -1,5 +1,5 @@
 import { detectPageKind } from '@/src/ao3/types';
-import { parseTagPage, parseWorkPage } from '@/src/ao3';
+import { parseAuthorPage, parseTagPage, parseWorkPage } from '@/src/ao3';
 import { sendMessage } from '@/src/messaging/protocol';
 
 const buttonStyle =
@@ -16,7 +16,9 @@ export default defineContentScript({
     const payload =
       kind === 'work'
         ? parseWorkPage(document, url)
-        : parseTagPage(document, url);
+        : kind === 'tag'
+          ? parseTagPage(document, url)
+          : parseAuthorPage(document, url);
 
     if (!payload) return;
 
@@ -48,7 +50,7 @@ export default defineContentScript({
       });
 
       container.append(addSeed, addNegative);
-    } else {
+    } else if (kind === 'tag') {
       const avoidTag = document.createElement('button');
       avoidTag.textContent = 'Avoid this tag';
       avoidTag.type = 'button';

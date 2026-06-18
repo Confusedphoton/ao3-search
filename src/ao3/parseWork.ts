@@ -1,6 +1,25 @@
 import { selectors } from './selectors';
 import type { WorkPageData } from './types';
-import { parseWorkIdFromUrl, workUrl } from './types';
+import { parseAuthorKeyFromHref, parseWorkIdFromUrl, workUrl } from './types';
+
+export function parseAuthorsFromDocument(doc: Document): Array<{ key: string; displayName: string }> {
+  const authors: Array<{ key: string; displayName: string }> = [];
+  const seen = new Set<string>();
+
+  for (const link of doc.querySelectorAll(selectors.workAuthors)) {
+    const href = link.getAttribute('href');
+    if (!href) continue;
+    const key = parseAuthorKeyFromHref(href);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    authors.push({
+      key,
+      displayName: link.textContent?.trim() || key,
+    });
+  }
+
+  return authors;
+}
 
 export function parseWorkPage(doc: Document, url: string): WorkPageData | null {
   const workId = parseWorkIdFromUrl(url);
@@ -19,6 +38,7 @@ export function parseWorkPage(doc: Document, url: string): WorkPageData | null {
     workId,
     title,
     tags,
+    authors: parseAuthorsFromDocument(doc),
     url: workUrl(workId),
   };
 }

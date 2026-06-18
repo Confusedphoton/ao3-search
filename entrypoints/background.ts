@@ -2,7 +2,7 @@ import type { PageData } from '@/src/ao3/types';
 import { tagWorksUrl } from '@/src/ao3/types';
 import type { ExtensionMessage, NegativeSeed, SeedWork, SearchProgressPayload } from '@/src/messaging/types';
 import { MAX_NEGATIVE_SEEDS, MAX_SEEDS } from '@/src/config/constants';
-import { mergeTagPage, mergeWorkPage } from '@/src/storage/db';
+import { mergeAuthorPage, mergeTagPage, mergeWorkPage } from '@/src/storage/db';
 import { broadcast, onMessage } from '@/src/messaging/protocol';
 import { SearchOrchestrator } from '@/src/search/orchestrator';
 
@@ -45,11 +45,20 @@ async function ingestPageData(payload: PageData): Promise<void> {
       workId: payload.workId,
       title: payload.title,
       tags: payload.tags,
+      authors: payload.authors,
+      explored: true,
+    });
+  } else if (payload.kind === 'tag') {
+    await mergeTagPage({
+      tagName: payload.tagName,
+      workCount: payload.workCount,
+      workIds: payload.workIds,
       explored: true,
     });
   } else {
-    await mergeTagPage({
-      tagName: payload.tagName,
+    await mergeAuthorPage({
+      authorKey: payload.authorKey,
+      displayName: payload.displayName,
       workCount: payload.workCount,
       workIds: payload.workIds,
       explored: true,
