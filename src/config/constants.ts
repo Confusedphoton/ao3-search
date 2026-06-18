@@ -15,6 +15,8 @@ export const TOP_RESULTS = 25;
 
 export const MIN_SEEDS = 1;
 export const MAX_SEEDS = 5;
+export const MAX_NEGATIVE_SEEDS = 10;
+export const NEGATIVE_SEED_WEIGHT = 1;
 
 export const DB_NAME = 'ao3-search';
 export const DB_VERSION = 1;

@@ -1,13 +1,14 @@
-import type { SeedWork, SearchProgressPayload, SearchResultItem } from '../messaging/types';
+import type { NegativeSeed, SeedWork, SearchProgressPayload, SearchResultItem } from '../messaging/types';
 import {
   EXPANSION_BUDGET,
   MIN_FRONTIER_AUTHORITY,
+  NEGATIVE_SEED_WEIGHT,
   PPR_ALPHA,
   PPR_MAX_ITERATIONS,
   PPR_TOLERANCE,
   TOP_RESULTS,
 } from '../config/constants';
-import { buildCSR, seedIndicesForWorks } from '../graph/csr';
+import { buildCSR, seedIndicesForNegativeSeeds, seedIndicesForWorks } from '../graph/csr';
 import { NodeKind } from '../graph/types';
 import { workUrl } from '../ao3';
 import { runPPRViaWorker, closeComputeHost } from '../compute/host';
@@ -30,10 +31,14 @@ export class SearchOrchestrator {
 
   async run(
     seeds: SeedWork[],
+    negativeSeeds: NegativeSeed[],
     onProgress: (payload: SearchProgressPayload) => void,
   ): Promise<SearchRunResult> {
     this.cancelled = false;
     const seedIds = seeds.map((s) => s.workId);
+    const negativeKeys = negativeSeeds.map((s) =>
+      s.kind === 'work' ? { kind: 'work' as const, key: s.workId } : { kind: 'tag' as const, key: s.tagName },
+    );
     let requestsUsed = 0;
 
     onProgress({
@@ -46,6 +51,16 @@ export class SearchOrchestrator {
 
     const beforeSeeds = await loadGraphSnapshot();
     await this.scheduler.ensureSeedWorks(seedIds);
+    if (negativeSeeds.length > 0) {
+      onProgress({
+        phase: 'cold-start',
+        requestsUsed,
+        expansionBudget: EXPANSION_BUDGET,
+        frontierSize: 0,
+        message: 'Fetching negative seeds…',
+      });
+      await this.scheduler.ensureNegativeSeeds(negativeSeeds);
+    }
     const afterSeeds = await loadGraphSnapshot();
     requestsUsed += countNewlyExplored(beforeSeeds.nodes, afterSeeds.nodes);
 
@@ -60,6 +75,7 @@ export class SearchOrchestrator {
       const snapshot = await loadGraphSnapshot();
       const csr = buildCSR(snapshot);
       const seedIndices = seedIndicesForWorks(csr, seedIds);
+      const negativeSeedIndices = seedIndicesForNegativeSeeds(csr, negativeKeys);
 
       if (seedIndices.length === 0) {
         onProgress({
@@ -85,6 +101,8 @@ export class SearchOrchestrator {
         neighbors: csr.neighbors,
         edgeWeights: csr.edgeWeights,
         seedIndices,
+        negativeSeedIndices,
+        negativeWeight: NEGATIVE_SEED_WEIGHT,
         alpha: PPR_ALPHA,
         maxIterations: PPR_MAX_ITERATIONS,
         tolerance: PPR_TOLERANCE,
@@ -117,11 +135,14 @@ export class SearchOrchestrator {
     const finalSnapshot = await loadGraphSnapshot();
     const finalCsr = buildCSR(finalSnapshot);
     const finalSeeds = seedIndicesForWorks(finalCsr, seedIds);
+    const finalNegativeSeeds = seedIndicesForNegativeSeeds(finalCsr, negativeKeys);
     const finalPpr = await runPPRViaWorker({
       offsets: finalCsr.offsets,
       neighbors: finalCsr.neighbors,
       edgeWeights: finalCsr.edgeWeights,
       seedIndices: finalSeeds,
+      negativeSeedIndices: finalNegativeSeeds,
+      negativeWeight: NEGATIVE_SEED_WEIGHT,
       alpha: PPR_ALPHA,
       maxIterations: PPR_MAX_ITERATIONS,
       tolerance: PPR_TOLERANCE,
@@ -130,7 +151,11 @@ export class SearchOrchestrator {
     await closeComputeHost();
 
     const authority = Float64Array.from(finalPpr.authority);
-    const seedSet = new Set(seedIds);
+    const excludeWorkIds = new Set(seedIds);
+    for (const seed of negativeSeeds) {
+      if (seed.kind === 'work') excludeWorkIds.add(seed.workId);
+    }
+
     const results: SearchResultItem[] = [];
 
     const ranked = finalCsr.workIndices
@@ -139,7 +164,7 @@ export class SearchOrchestrator {
         node: finalCsr.nodeByIndex[index],
         score: authority[index],
       }))
-      .filter((item) => !seedSet.has(item.node.key))
+      .filter((item) => !excludeWorkIds.has(item.node.key))
       .sort((a, b) => b.score - a.score)
       .slice(0, TOP_RESULTS);
 

@@ -115,6 +115,41 @@ li.empty {
   font-variant-numeric: tabular-nums;
 }
 
+.negative-section {
+  border-left: 3px solid #666;
+  padding-left: 10px;
+}
+
+.hint {
+  margin: 0 0 8px;
+  color: #666;
+  font-size: 12px;
+}
+
+.tag-form {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.tag-form input {
+  flex: 1;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
+.negative-label {
+  flex: 1;
+}
+
+.negative-kind {
+  font-size: 11px;
+  color: #666;
+  text-transform: uppercase;
+}
+
 .actions {
   display: flex;
   gap: 6px;

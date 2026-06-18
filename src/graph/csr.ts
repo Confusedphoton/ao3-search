@@ -120,3 +120,26 @@ export function seedIndicesForWorks(csr: CSRGraph, seedWorkIds: string[]): numbe
   }
   return indices;
 }
+
+export function seedIndicesForTags(csr: CSRGraph, tagNames: string[]): number[] {
+  const indices: number[] = [];
+  for (const tagName of tagNames) {
+    for (let i = 0; i < csr.nodeByIndex.length; i++) {
+      const node = csr.nodeByIndex[i];
+      if (node.kind === NodeKind.Tag && node.key === tagName) {
+        indices.push(i);
+        break;
+      }
+    }
+  }
+  return indices;
+}
+
+export function seedIndicesForNegativeSeeds(
+  csr: CSRGraph,
+  negativeSeeds: Array<{ kind: 'work' | 'tag'; key: string }>,
+): number[] {
+  const workIds = negativeSeeds.filter((s) => s.kind === 'work').map((s) => s.key);
+  const tagNames = negativeSeeds.filter((s) => s.kind === 'tag').map((s) => s.key);
+  return [...seedIndicesForWorks(csr, workIds), ...seedIndicesForTags(csr, tagNames)];
+}

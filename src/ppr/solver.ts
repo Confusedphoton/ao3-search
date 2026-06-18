@@ -1,14 +1,18 @@
 import {
+  NEGATIVE_SEED_WEIGHT,
   PPR_ALPHA,
   PPR_MAX_ITERATIONS,
   PPR_TOLERANCE,
 } from '../config/constants';
+import { signEdgesForNegativeSeeds } from '../graph/signedQuery';
 
 export interface PPRInput {
   offsets: number[];
   neighbors: number[];
   edgeWeights: number[];
   seedIndices: number[];
+  negativeSeedIndices?: number[];
+  negativeWeight?: number;
   alpha?: number;
   maxIterations?: number;
   tolerance?: number;
@@ -26,6 +30,8 @@ export function runPPR(input: PPRInput): PPRResult {
     neighbors,
     edgeWeights,
     seedIndices,
+    negativeSeedIndices = [],
+    negativeWeight = NEGATIVE_SEED_WEIGHT,
     alpha = PPR_ALPHA,
     maxIterations = PPR_MAX_ITERATIONS,
     tolerance = PPR_TOLERANCE,
@@ -36,16 +42,30 @@ export function runPPR(input: PPRInput): PPRResult {
   const next = new Float64Array(n);
   const teleport = new Float64Array(n);
 
-  if (seedIndices.length === 0) {
+  if (seedIndices.length === 0 && negativeSeedIndices.length === 0) {
     return { authority, iterations: 0, delta: 0 };
   }
 
-  const seedWeight = 1 / seedIndices.length;
-  for (const index of seedIndices) {
-    teleport[index] = seedWeight;
+  if (seedIndices.length > 0) {
+    const positiveWeight = 1 / seedIndices.length;
+    for (const index of seedIndices) {
+      teleport[index] += positiveWeight;
+    }
   }
 
-  authority.fill(1 / n);
+  if (negativeSeedIndices.length > 0) {
+    const sinkWeight = negativeWeight / negativeSeedIndices.length;
+    for (const index of negativeSeedIndices) {
+      teleport[index] -= sinkWeight;
+    }
+  }
+
+  const signedEdgeWeights = signEdgesForNegativeSeeds(
+    offsets,
+    neighbors,
+    edgeWeights,
+    negativeSeedIndices,
+  );
 
   let iterations = 0;
   let delta = Infinity;
@@ -60,7 +80,7 @@ export function runPPR(input: PPRInput): PPRResult {
       if (mass === 0 || start === end) continue;
 
       for (let edge = start; edge < end; edge++) {
-        next[neighbors[edge]] += mass * edgeWeights[edge];
+        next[neighbors[edge]] += mass * signedEdgeWeights[edge];
       }
     }
 

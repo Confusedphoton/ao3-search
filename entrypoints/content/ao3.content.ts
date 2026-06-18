@@ -2,6 +2,9 @@ import { detectPageKind } from '@/src/ao3/types';
 import { parseTagPage, parseWorkPage } from '@/src/ao3';
 import { sendMessage } from '@/src/messaging/protocol';
 
+const buttonStyle =
+  'padding:8px 12px;border-radius:6px;border:1px solid #900;background:#fff;cursor:pointer;font:13px sans-serif;';
+
 export default defineContentScript({
   matches: ['*://archiveofourown.org/*'],
   runAt: 'document_idle',
@@ -19,18 +22,45 @@ export default defineContentScript({
 
     void sendMessage({ type: 'PageDataIngested', payload });
 
-    if (kind !== 'work') return;
+    const container = document.createElement('div');
+    container.style.cssText =
+      'position:fixed;bottom:16px;right:16px;z-index:9999;display:flex;flex-direction:column;gap:8px;';
 
-    const button = document.createElement('button');
-    button.textContent = 'Add as seed';
-    button.type = 'button';
-    button.style.cssText =
-      'position:fixed;bottom:16px;right:16px;z-index:9999;padding:8px 12px;border-radius:6px;border:1px solid #900;background:#fff;cursor:pointer;font:13px sans-serif;';
-    button.addEventListener('click', () => {
-      void sendMessage({ type: 'AddSeedFromTab' });
-      button.textContent = 'Added!';
-      button.disabled = true;
-    });
-    document.body.appendChild(button);
+    if (kind === 'work') {
+      const addSeed = document.createElement('button');
+      addSeed.textContent = 'Add as seed';
+      addSeed.type = 'button';
+      addSeed.style.cssText = buttonStyle;
+      addSeed.addEventListener('click', () => {
+        void sendMessage({ type: 'AddSeedFromTab' });
+        addSeed.textContent = 'Added!';
+        addSeed.disabled = true;
+      });
+
+      const addNegative = document.createElement('button');
+      addNegative.textContent = 'Avoid this work';
+      addNegative.type = 'button';
+      addNegative.style.cssText = buttonStyle + 'border-color:#555;color:#333;';
+      addNegative.addEventListener('click', () => {
+        void sendMessage({ type: 'AddNegativeWorkFromTab' });
+        addNegative.textContent = 'Avoided!';
+        addNegative.disabled = true;
+      });
+
+      container.append(addSeed, addNegative);
+    } else {
+      const avoidTag = document.createElement('button');
+      avoidTag.textContent = 'Avoid this tag';
+      avoidTag.type = 'button';
+      avoidTag.style.cssText = buttonStyle + 'border-color:#555;color:#333;';
+      avoidTag.addEventListener('click', () => {
+        void sendMessage({ type: 'AddNegativeTagFromTab' });
+        avoidTag.textContent = 'Avoided!';
+        avoidTag.disabled = true;
+      });
+      container.append(avoidTag);
+    }
+
+    document.body.appendChild(container);
   },
 });

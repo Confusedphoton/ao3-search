@@ -6,6 +6,10 @@ export interface SeedWork {
   url: string;
 }
 
+export type NegativeSeed =
+  | { kind: 'work'; workId: string; title: string; url: string }
+  | { kind: 'tag'; tagName: string; url: string };
+
 export interface SearchProgressPayload {
   phase: 'cold-start' | 'expanding' | 'ranking' | 'done' | 'error';
   requestsUsed: number;
@@ -31,6 +35,8 @@ export interface PPRInputPayload {
   neighbors: number[];
   edgeWeights: number[];
   seedIndices: number[];
+  negativeSeedIndices?: number[];
+  negativeWeight?: number;
   alpha: number;
   maxIterations: number;
   tolerance: number;
@@ -46,8 +52,18 @@ export type ExtensionMessage =
   | { type: 'PageDataIngested'; payload: PageData }
   | { type: 'AddSeedFromTab' }
   | { type: 'RemoveSeed'; workId: string }
+  | { type: 'AddNegativeWorkFromTab' }
+  | { type: 'AddNegativeTagFromTab' }
+  | { type: 'AddNegativeTag'; tagName: string }
+  | { type: 'RemoveNegativeSeed'; kind: 'work' | 'tag'; key: string }
   | { type: 'GetState' }
-  | { type: 'StateUpdate'; seeds: SeedWork[]; searching: boolean; progress: SearchProgressPayload | null }
+  | {
+      type: 'StateUpdate';
+      seeds: SeedWork[];
+      negativeSeeds: NegativeSeed[];
+      searching: boolean;
+      progress: SearchProgressPayload | null;
+    }
   | { type: 'StartSearch' }
   | { type: 'CancelSearch' }
   | { type: 'SearchProgress'; payload: SearchProgressPayload }

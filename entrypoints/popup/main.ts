@@ -1,20 +1,30 @@
 import './style.css';
 import type {
   ExtensionMessage,
+  NegativeSeed,
   SearchProgressPayload,
   SearchResultItem,
   SeedWork,
 } from '@/src/messaging/types';
 import { isExtensionMessage } from '@/src/messaging/types';
 import { sendMessage } from '@/src/messaging/protocol';
-import { MAX_SEEDS, MIN_SEEDS } from '@/src/config/constants';
+import { MAX_NEGATIVE_SEEDS, MAX_SEEDS, MIN_SEEDS } from '@/src/config/constants';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
 let seeds: SeedWork[] = [];
+let negativeSeeds: NegativeSeed[] = [];
 let searching = false;
 let progress: SearchProgressPayload | null = null;
 let results: SearchResultItem[] = [];
+
+function negativeSeedLabel(seed: NegativeSeed): string {
+  return seed.kind === 'work' ? seed.title : seed.tagName;
+}
+
+function negativeSeedKey(seed: NegativeSeed): string {
+  return seed.kind === 'work' ? seed.workId : seed.tagName;
+}
 
 function render(): void {
   app.innerHTML = `
@@ -37,7 +47,40 @@ function render(): void {
                   (seed) => `
             <li>
               <span>${escapeHtml(seed.title)}</span>
-              <button data-remove="${seed.workId}" type="button" ${searching ? 'disabled' : ''}>Remove</button>
+              <button data-remove-seed="${seed.workId}" type="button" ${searching ? 'disabled' : ''}>Remove</button>
+            </li>`,
+                )
+                .join('')
+        }
+      </ul>
+    </section>
+
+    <section class="negative-section">
+      <div class="section-header">
+        <h2>Avoid (${negativeSeeds.length}/${MAX_NEGATIVE_SEEDS})</h2>
+        <button id="add-negative-work" type="button" ${searching ? 'disabled' : ''}>Add current tab</button>
+      </div>
+      <p class="hint">Works or tags to penalize — e.g. Major Character Death.</p>
+      <form id="add-negative-tag-form" class="tag-form">
+        <input
+          id="negative-tag-input"
+          type="text"
+          placeholder="Tag to avoid"
+          ${searching ? 'disabled' : ''}
+        />
+        <button type="submit" ${searching ? 'disabled' : ''}>Add tag</button>
+      </form>
+      <ul id="negative-seed-list">
+        ${
+          negativeSeeds.length === 0
+            ? '<li class="empty">Optional negative seeds.</li>'
+            : negativeSeeds
+                .map(
+                  (seed) => `
+            <li>
+              <span class="negative-label">${escapeHtml(negativeSeedLabel(seed))}</span>
+              <span class="negative-kind">${seed.kind}</span>
+              <button data-remove-negative-kind="${seed.kind}" data-remove-negative-key="${escapeHtml(negativeSeedKey(seed))}" type="button" ${searching ? 'disabled' : ''}>Remove</button>
             </li>`,
                 )
                 .join('')
@@ -88,6 +131,20 @@ function render(): void {
     void sendMessage({ type: 'AddSeedFromTab' });
   });
 
+  document.querySelector('#add-negative-work')?.addEventListener('click', () => {
+    void sendMessage({ type: 'AddNegativeWorkFromTab' });
+  });
+
+  document.querySelector('#add-negative-tag-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const input = document.querySelector<HTMLInputElement>('#negative-tag-input');
+    const tagName = input?.value.trim();
+    if (!tagName) return;
+    void sendMessage({ type: 'AddNegativeTag', tagName }).then(() => {
+      if (input) input.value = '';
+    });
+  });
+
   document.querySelector('#start-search')?.addEventListener('click', () => {
     void sendMessage({ type: 'StartSearch' });
   });
@@ -96,10 +153,20 @@ function render(): void {
     void sendMessage({ type: 'CancelSearch' });
   });
 
-  document.querySelectorAll('[data-remove]').forEach((el) => {
+  document.querySelectorAll('[data-remove-seed]').forEach((el) => {
     el.addEventListener('click', () => {
-      const workId = el.getAttribute('data-remove');
+      const workId = el.getAttribute('data-remove-seed');
       if (workId) void sendMessage({ type: 'RemoveSeed', workId });
+    });
+  });
+
+  document.querySelectorAll('[data-remove-negative-kind]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const kind = el.getAttribute('data-remove-negative-kind');
+      const key = el.getAttribute('data-remove-negative-key');
+      if (kind === 'work' || kind === 'tag') {
+        if (key) void sendMessage({ type: 'RemoveNegativeSeed', kind, key });
+      }
     });
   });
 }
@@ -115,6 +182,7 @@ function escapeHtml(text: string): string {
 function applyState(message: ExtensionMessage): void {
   if (message.type === 'StateUpdate') {
     seeds = message.seeds;
+    negativeSeeds = message.negativeSeeds;
     searching = message.searching;
     progress = message.progress;
     render();

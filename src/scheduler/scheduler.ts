@@ -1,3 +1,4 @@
+import type { NegativeSeed } from '../messaging/types';
 import { REQUEST_INTERVAL_MS, REQUEST_JITTER_MS, MAX_FETCH_RETRIES } from '../config/constants';
 import { parseTagPageFromHtml, parseWorkPageFromHtml, tagWorksUrl, workUrl } from '../ao3';
 import type { GraphNode } from '../graph/types';
@@ -67,6 +68,31 @@ export class RequestScheduler {
       const existing = await getWorkNode(workId);
       if (existing?.explored) continue;
       await this.fetchWork(workId);
+    }
+  }
+
+  async ensureNegativeSeeds(negativeSeeds: NegativeSeed[]): Promise<void> {
+    for (const seed of negativeSeeds) {
+      if (seed.kind === 'work') {
+        const existing = await getWorkNode(seed.workId);
+        if (existing?.explored) continue;
+        await this.fetchWork(seed.workId);
+        continue;
+      }
+
+      const existing = await getTagNode(seed.tagName);
+      if (existing?.explored) continue;
+
+      const url = tagWorksUrl(seed.tagName);
+      const html = await this.fetchWithRetry(url);
+      const parsed = parseTagPageFromHtml(html, url);
+      if (!parsed) throw new Error(`Failed to parse tag page ${seed.tagName}`);
+      await mergeTagPage({
+        tagName: parsed.tagName,
+        workCount: parsed.workCount,
+        workIds: parsed.workIds,
+        explored: true,
+      });
     }
   }
 
