@@ -16,7 +16,11 @@ import {
 } from '../graph/csr';
 import { NodeKind } from '../graph/types';
 import { workUrl } from '../ao3';
-import { runPPRViaWorker, closeComputeHost } from '../compute/host';
+import {
+  CONFIDENCE_SIGNAL_ID,
+  RANK_SIGNAL_ID,
+} from '../propagation';
+import { runPropagationViaWorker, closeComputeHost } from '../compute/host';
 import { loadGraphSnapshot } from '../storage/db';
 import { RequestScheduler } from '../scheduler/scheduler';
 import { buildFrontier, maxFrontierAuthority, pickNextFrontier } from './frontier';
@@ -127,19 +131,20 @@ export class SearchOrchestrator {
         message: 'Running Personalized PageRank…',
       });
 
-      const ppr = await runPPRViaWorker({
+      const propagation = await runPropagationViaWorker({
         offsets: csr.offsets,
         neighbors: csr.neighbors,
         edgeWeights: csr.edgeWeights,
         seedIndices,
         negativeSeedIndices,
         negativeWeight: NEGATIVE_SEED_WEIGHT,
+        signalIds: [RANK_SIGNAL_ID, CONFIDENCE_SIGNAL_ID],
         alpha: PPR_ALPHA,
         maxIterations: PPR_MAX_ITERATIONS,
         tolerance: PPR_TOLERANCE,
       });
 
-      const authority = Float64Array.from(ppr.authority);
+      const authority = Float64Array.from(propagation.signals[RANK_SIGNAL_ID] ?? []);
       const frontier = buildFrontier(csr, authority);
 
       emitPreview(csr, authority, {
@@ -167,13 +172,14 @@ export class SearchOrchestrator {
     const finalCsr = buildCSR(finalSnapshot);
     const finalSeeds = seedIndicesForPositiveSeeds(finalCsr, positiveKeys);
     const finalNegativeSeeds = seedIndicesForNegativeSeeds(finalCsr, negativeKeys);
-    const finalPpr = await runPPRViaWorker({
+    const finalPropagation = await runPropagationViaWorker({
       offsets: finalCsr.offsets,
       neighbors: finalCsr.neighbors,
       edgeWeights: finalCsr.edgeWeights,
       seedIndices: finalSeeds,
       negativeSeedIndices: finalNegativeSeeds,
       negativeWeight: NEGATIVE_SEED_WEIGHT,
+      signalIds: [RANK_SIGNAL_ID, CONFIDENCE_SIGNAL_ID],
       alpha: PPR_ALPHA,
       maxIterations: PPR_MAX_ITERATIONS,
       tolerance: PPR_TOLERANCE,
@@ -181,7 +187,7 @@ export class SearchOrchestrator {
 
     await closeComputeHost();
 
-    const authority = Float64Array.from(finalPpr.authority);
+    const authority = Float64Array.from(finalPropagation.signals[RANK_SIGNAL_ID] ?? []);
     const results = rankWorks(finalCsr, authority, excludeWorkIds, seedTitleMap);
 
     onProgress({

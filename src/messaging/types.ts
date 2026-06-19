@@ -32,6 +32,26 @@ export interface SearchResultsPayload {
   requestsUsed: number;
 }
 
+export interface PropagationInputPayload {
+  offsets: number[];
+  neighbors: number[];
+  edgeWeights: number[];
+  seedIndices: number[];
+  negativeSeedIndices?: number[];
+  negativeWeight?: number;
+  signalIds: string[];
+  alpha: number;
+  maxIterations: number;
+  tolerance: number;
+}
+
+export interface PropagationResultPayload {
+  signals: Record<string, number[]>;
+  iterations: number;
+  deltas: Record<string, number>;
+}
+
+/** @deprecated Use PropagationInputPayload with signalIds: ['rank'] */
 export interface PPRInputPayload {
   offsets: number[];
   neighbors: number[];
@@ -44,6 +64,7 @@ export interface PPRInputPayload {
   tolerance: number;
 }
 
+/** @deprecated Use PropagationResultPayload */
 export interface PPRResultPayload {
   authority: number[];
   iterations: number;
