@@ -60,7 +60,10 @@ describe('AO3 parsers', () => {
     expect(parsed).toMatchObject({
       kind: 'tag',
       tagName: 'Harry Potter',
-      workIds: ['12345', '67890'],
+      works: [
+        { workId: '12345', title: 'Story' },
+        { workId: '67890', title: 'Other' },
+      ],
     });
   });
 
@@ -73,7 +76,10 @@ describe('AO3 parsers', () => {
       kind: 'author',
       authorKey: 'AuthorName',
       displayName: 'Author Name',
-      workIds: ['11111', '22222'],
+      works: [
+        { workId: '11111', title: 'Fic A' },
+        { workId: '22222', title: 'Fic B' },
+      ],
     });
   });
 

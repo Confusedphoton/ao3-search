@@ -1,41 +1,134 @@
 import type { PageData } from '@/src/ao3/types';
 import { tagWorksUrl } from '@/src/ao3/types';
-import type { ExtensionMessage, NegativeSeed, SeedWork, SearchProgressPayload } from '@/src/messaging/types';
+import type {
+  ExtensionMessage,
+  GraphTagMatch,
+  NegativeSeed,
+  PositiveSeed,
+  SearchProgressPayload,
+  SearchResultItem,
+} from '@/src/messaging/types';
 import { MAX_NEGATIVE_SEEDS, MAX_SEEDS } from '@/src/config/constants';
-import { mergeAuthorPage, mergeTagPage, mergeWorkPage } from '@/src/storage/db';
+import { mergeAuthorPage, mergeTagPage, mergeWorkPage, searchTagNodes } from '@/src/storage/db';
 import { broadcast, onMessage } from '@/src/messaging/protocol';
 import { SearchOrchestrator } from '@/src/search/orchestrator';
 
-const seeds: SeedWork[] = [];
+const seeds: PositiveSeed[] = [];
 const negativeSeeds: NegativeSeed[] = [];
 let searching = false;
 let orchestrator: SearchOrchestrator | null = null;
+let lastResults: SearchResultItem[] = [];
+let lastProgress: SearchProgressPayload | null = null;
+let ready: Promise<void> | null = null;
 
-async function persistSeeds(): Promise<void> {
-  await browser.storage.local.set({ seeds, negativeSeeds });
+async function persistUiState(): Promise<void> {
+  await browser.storage.local.set({ seeds, negativeSeeds, lastResults, lastProgress });
 }
 
-async function loadSeeds(): Promise<void> {
-  const stored = await browser.storage.local.get(['seeds', 'negativeSeeds']);
+async function loadPersistedState(): Promise<void> {
+  const stored = await browser.storage.local.get([
+    'seeds',
+    'negativeSeeds',
+    'lastResults',
+    'lastProgress',
+  ]);
   if (Array.isArray(stored.seeds)) {
-    seeds.splice(0, seeds.length, ...(stored.seeds as SeedWork[]));
+    const normalized = stored.seeds
+      .map((seed) => normalizeStoredSeed(seed))
+      .filter((seed): seed is PositiveSeed => seed !== null);
+    seeds.splice(0, seeds.length, ...normalized);
   }
   if (Array.isArray(stored.negativeSeeds)) {
     negativeSeeds.splice(0, negativeSeeds.length, ...(stored.negativeSeeds as NegativeSeed[]));
   }
+  if (Array.isArray(stored.lastResults)) {
+    lastResults = stored.lastResults as SearchResultItem[];
+  }
+  if (stored.lastProgress && typeof stored.lastProgress === 'object') {
+    lastProgress = stored.lastProgress as SearchProgressPayload;
+  }
+}
+
+function ensureReady(): Promise<void> {
+  if (!ready) ready = loadPersistedState();
+  return ready;
+}
+
+function normalizeStoredSeed(raw: unknown): PositiveSeed | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (record.kind === 'tag' && typeof record.tagName === 'string') {
+    return {
+      kind: 'tag',
+      tagName: record.tagName,
+      url: typeof record.url === 'string' ? record.url : tagWorksUrl(record.tagName),
+    };
+  }
+  if (typeof record.workId === 'string') {
+    return {
+      kind: 'work',
+      workId: record.workId,
+      title: typeof record.title === 'string' ? record.title : `Work ${record.workId}`,
+      url: typeof record.url === 'string' ? record.url : `https://archiveofourown.org/works/${record.workId}`,
+    };
+  }
+  return null;
 }
 
 function stateUpdate(
   searchingNow: boolean,
   progress: SearchProgressPayload | null = null,
 ): ExtensionMessage {
+  const effectiveProgress = progress ?? (searchingNow ? null : lastProgress);
   return {
     type: 'StateUpdate',
     seeds: [...seeds],
     negativeSeeds: [...negativeSeeds],
     searching: searchingNow,
-    progress,
+    progress: effectiveProgress,
+    results: lastResults,
   };
+}
+
+async function publishState(progress: SearchProgressPayload | null = null): Promise<void> {
+  await broadcast(stateUpdate(searching, progress));
+}
+
+async function getActiveTabId(sender: Browser.runtime.MessageSender): Promise<number | undefined> {
+  if (sender.tab?.id != null) return sender.tab.id;
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+  return tabs[0]?.id;
+}
+
+async function readTabPageInfo(tabId: number): Promise<{
+  url: string;
+  workId: string | null;
+  tagName: string | null;
+  title: string;
+}> {
+  const results = await browser.scripting.executeScript({
+    target: { tabId },
+    func: () => {
+      const url = location.href;
+      const workMatch = url.match(/\/works\/(\d+)/);
+      const tagMatch = url.match(/\/tags\/([^/]+)\/works/);
+      const tagName = tagMatch ? decodeURIComponent(tagMatch[1].replace(/\+/g, ' ')) : null;
+      const title =
+        document.querySelector('h2.title.heading')?.textContent?.trim() ??
+        document.querySelector('h2.heading')?.textContent?.trim() ??
+        document.title;
+      return { url, workId: workMatch?.[1] ?? null, tagName, title };
+    },
+  });
+
+  return (
+    (results[0]?.result as {
+      url: string;
+      workId: string | null;
+      tagName: string | null;
+      title: string;
+    } | undefined) ?? { url: '', workId: null, tagName: null, title: '' }
+  );
 }
 
 async function ingestPageData(payload: PageData): Promise<void> {
@@ -52,7 +145,7 @@ async function ingestPageData(payload: PageData): Promise<void> {
     await mergeTagPage({
       tagName: payload.tagName,
       workCount: payload.workCount,
-      workIds: payload.workIds,
+      works: payload.works,
       explored: true,
     });
   } else {
@@ -60,14 +153,18 @@ async function ingestPageData(payload: PageData): Promise<void> {
       authorKey: payload.authorKey,
       displayName: payload.displayName,
       workCount: payload.workCount,
-      workIds: payload.workIds,
+      works: payload.works,
       explored: true,
     });
   }
 }
 
 function isPositiveWorkSeed(workId: string): boolean {
-  return seeds.some((s) => s.workId === workId);
+  return seeds.some((s) => s.kind === 'work' && s.workId === workId);
+}
+
+function isPositiveTagSeed(tagName: string): boolean {
+  return seeds.some((s) => s.kind === 'tag' && s.tagName === tagName);
 }
 
 function isNegativeWorkSeed(workId: string): boolean {
@@ -79,57 +176,68 @@ function isNegativeTagSeed(tagName: string): boolean {
 }
 
 async function addSeedFromTab(sender: Browser.runtime.MessageSender): Promise<ExtensionMessage> {
-  const tabId = sender.tab?.id;
+  const tabId = await getActiveTabId(sender);
   if (!tabId) return stateUpdate(searching);
 
-  const results = await browser.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      const url = location.href;
-      const match = url.match(/\/works\/(\d+)/);
-      const title =
-        document.querySelector('h2.title.heading')?.textContent?.trim() ?? document.title;
-      return { url, workId: match?.[1] ?? null, title };
-    },
-  });
+  const info = await readTabPageInfo(tabId);
+  if (info.workId) {
+    if (isPositiveWorkSeed(info.workId) || isNegativeWorkSeed(info.workId)) {
+      return stateUpdate(searching);
+    }
+    if (seeds.length >= MAX_SEEDS) return stateUpdate(searching);
 
-  const info = results[0]?.result as { url: string; workId: string | null; title: string } | undefined;
-  if (!info?.workId) return stateUpdate(searching);
-
-  if (isPositiveWorkSeed(info.workId) || isNegativeWorkSeed(info.workId)) {
+    seeds.push({
+      kind: 'work',
+      workId: info.workId,
+      title: info.title || `Work ${info.workId}`,
+      url: info.url,
+    });
+    await persistUiState();
+    await publishState();
     return stateUpdate(searching);
   }
 
-  if (seeds.length >= MAX_SEEDS) {
+  if (info.tagName) {
+    if (isPositiveTagSeed(info.tagName) || isNegativeTagSeed(info.tagName)) {
+      return stateUpdate(searching);
+    }
+    if (seeds.length >= MAX_SEEDS) return stateUpdate(searching);
+
+    seeds.push({
+      kind: 'tag',
+      tagName: info.tagName,
+      url: info.url,
+    });
+    await persistUiState();
+    await publishState();
+  }
+
+  return stateUpdate(searching);
+}
+
+async function addSeedTag(tagName: string): Promise<ExtensionMessage> {
+  const trimmed = tagName.trim();
+  if (!trimmed || isPositiveTagSeed(trimmed) || isNegativeTagSeed(trimmed)) {
     return stateUpdate(searching);
   }
+  if (seeds.length >= MAX_SEEDS) return stateUpdate(searching);
 
   seeds.push({
-    workId: info.workId,
-    title: info.title || `Work ${info.workId}`,
-    url: info.url,
+    kind: 'tag',
+    tagName: trimmed,
+    url: tagWorksUrl(trimmed),
   });
-  await persistSeeds();
+  await persistUiState();
+  await publishState();
   return stateUpdate(searching);
 }
 
 async function addNegativeWorkFromTab(sender: Browser.runtime.MessageSender): Promise<ExtensionMessage> {
-  const tabId = sender.tab?.id;
+  const tabId = await getActiveTabId(sender);
   if (!tabId) return stateUpdate(searching);
 
-  const results = await browser.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      const url = location.href;
-      const match = url.match(/\/works\/(\d+)/);
-      const title =
-        document.querySelector('h2.title.heading')?.textContent?.trim() ?? document.title;
-      return { url, workId: match?.[1] ?? null, title };
-    },
-  });
-
-  const info = results[0]?.result as { url: string; workId: string | null; title: string } | undefined;
-  if (!info?.workId) return stateUpdate(searching);
+  const info = await readTabPageInfo(tabId);
+  if (!info.workId) return stateUpdate(searching);
 
   if (isPositiveWorkSeed(info.workId) || isNegativeWorkSeed(info.workId)) {
     return stateUpdate(searching);
@@ -145,28 +253,19 @@ async function addNegativeWorkFromTab(sender: Browser.runtime.MessageSender): Pr
     title: info.title || `Work ${info.workId}`,
     url: info.url,
   });
-  await persistSeeds();
+  await persistUiState();
+  await publishState();
   return stateUpdate(searching);
 }
 
 async function addNegativeTagFromTab(sender: Browser.runtime.MessageSender): Promise<ExtensionMessage> {
-  const tabId = sender.tab?.id;
+  const tabId = await getActiveTabId(sender);
   if (!tabId) return stateUpdate(searching);
 
-  const results = await browser.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      const url = location.href;
-      const match = url.match(/\/tags\/([^/]+)\/works/);
-      const tagName = match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : null;
-      return { url, tagName };
-    },
-  });
+  const info = await readTabPageInfo(tabId);
+  if (!info.tagName) return stateUpdate(searching);
 
-  const info = results[0]?.result as { url: string; tagName: string | null } | undefined;
-  if (!info?.tagName) return stateUpdate(searching);
-
-  if (isNegativeTagSeed(info.tagName)) {
+  if (isPositiveTagSeed(info.tagName) || isNegativeTagSeed(info.tagName)) {
     return stateUpdate(searching);
   }
 
@@ -179,13 +278,14 @@ async function addNegativeTagFromTab(sender: Browser.runtime.MessageSender): Pro
     tagName: info.tagName,
     url: info.url,
   });
-  await persistSeeds();
+  await persistUiState();
+  await publishState();
   return stateUpdate(searching);
 }
 
 async function addNegativeTag(tagName: string): Promise<ExtensionMessage> {
   const trimmed = tagName.trim();
-  if (!trimmed || isNegativeTagSeed(trimmed)) {
+  if (!trimmed || isNegativeTagSeed(trimmed) || isPositiveTagSeed(trimmed)) {
     return stateUpdate(searching);
   }
 
@@ -198,11 +298,23 @@ async function addNegativeTag(tagName: string): Promise<ExtensionMessage> {
     tagName: trimmed,
     url: tagWorksUrl(trimmed),
   });
-  await persistSeeds();
+  await persistUiState();
+  await publishState();
   return stateUpdate(searching);
 }
 
+async function searchGraphTags(query: string): Promise<ExtensionMessage> {
+  const nodes = await searchTagNodes(query, 8);
+  const tags: GraphTagMatch[] = nodes.map((node) => ({
+    tagName: node.key,
+    workCount: node.calibratedFreq,
+  }));
+  return { type: 'GraphTagResults', tags };
+}
+
 onMessage(async (message, sender) => {
+  await ensureReady();
+
   switch (message.type) {
     case 'GetState':
       return stateUpdate(searching);
@@ -214,6 +326,12 @@ onMessage(async (message, sender) => {
     case 'AddSeedFromTab':
       return addSeedFromTab(sender);
 
+    case 'AddSeedTag':
+      return addSeedTag(message.tagName);
+
+    case 'SearchGraphTags':
+      return searchGraphTags(message.query);
+
     case 'AddNegativeWorkFromTab':
       return addNegativeWorkFromTab(sender);
 
@@ -224,9 +342,14 @@ onMessage(async (message, sender) => {
       return addNegativeTag(message.tagName);
 
     case 'RemoveSeed': {
-      const index = seeds.findIndex((s) => s.workId === message.workId);
+      const index = seeds.findIndex(
+        (s) =>
+          s.kind === message.kind &&
+          (s.kind === 'work' ? s.workId === message.key : s.tagName === message.key),
+      );
       if (index >= 0) seeds.splice(index, 1);
-      await persistSeeds();
+      await persistUiState();
+      await publishState();
       return stateUpdate(searching);
     }
 
@@ -235,21 +358,26 @@ onMessage(async (message, sender) => {
         s.kind === message.kind && (s.kind === 'work' ? s.workId === message.key : s.tagName === message.key),
       );
       if (index >= 0) negativeSeeds.splice(index, 1);
-      await persistSeeds();
+      await persistUiState();
+      await publishState();
       return stateUpdate(searching);
     }
 
     case 'CancelSearch':
       orchestrator?.cancel();
       searching = false;
-      await broadcast(stateUpdate(false));
+      await publishState();
       return stateUpdate(false);
 
     case 'StartSearch': {
       if (searching || seeds.length === 0) return stateUpdate(searching);
       searching = true;
+      lastResults = [];
+      lastProgress = null;
       orchestrator = new SearchOrchestrator();
       void runSearch(orchestrator);
+      await persistUiState();
+      await publishState();
       return stateUpdate(true);
     }
 
@@ -263,9 +391,24 @@ async function runSearch(search: SearchOrchestrator): Promise<void> {
   try {
     const { results, requestsUsed } = await search.run(seeds, negativeSeeds, async (payload) => {
       lastRequestsUsed = payload.requestsUsed;
+      if (payload.previewResults) {
+        lastResults = payload.previewResults;
+        lastProgress = payload;
+        await persistUiState();
+      }
       await broadcast({ type: 'SearchProgress', payload });
       await broadcast(stateUpdate(true, payload));
     });
+    lastResults = results;
+    lastProgress = {
+      phase: 'done',
+      requestsUsed,
+      expansionBudget: 0,
+      frontierSize: 0,
+      message: `Found ${results.length} works`,
+      previewResults: results,
+    };
+    await persistUiState();
     await broadcast({
       type: 'SearchResults',
       payload: { results, requestsUsed },
@@ -285,11 +428,11 @@ async function runSearch(search: SearchOrchestrator): Promise<void> {
   } finally {
     searching = false;
     orchestrator = null;
-    await broadcast(stateUpdate(false));
+    await publishState();
   }
 }
 
-export default defineBackground(async () => {
-  await loadSeeds();
-  console.log('[ao3-search] background ready');
+export default defineBackground(() => {
+  ready = loadPersistedState();
+  void ready.then(() => console.log('[ao3-search] background ready'));
 });

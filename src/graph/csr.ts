@@ -165,7 +165,21 @@ export function seedIndicesForNegativeSeeds(
   csr: CSRGraph,
   negativeSeeds: Array<{ kind: 'work' | 'tag'; key: string }>,
 ): number[] {
-  const workIds = negativeSeeds.filter((s) => s.kind === 'work').map((s) => s.key);
-  const tagNames = negativeSeeds.filter((s) => s.kind === 'tag').map((s) => s.key);
+  return seedIndicesForSignedSeeds(csr, negativeSeeds);
+}
+
+export function seedIndicesForPositiveSeeds(
+  csr: CSRGraph,
+  positiveSeeds: Array<{ kind: 'work' | 'tag'; key: string }>,
+): number[] {
+  return seedIndicesForSignedSeeds(csr, positiveSeeds);
+}
+
+function seedIndicesForSignedSeeds(
+  csr: CSRGraph,
+  seeds: Array<{ kind: 'work' | 'tag'; key: string }>,
+): number[] {
+  const workIds = seeds.filter((s) => s.kind === 'work').map((s) => s.key);
+  const tagNames = seeds.filter((s) => s.kind === 'tag').map((s) => s.key);
   return [...seedIndicesForWorks(csr, workIds), ...seedIndicesForTags(csr, tagNames)];
 }

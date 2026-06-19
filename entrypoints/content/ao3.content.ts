@@ -51,6 +51,16 @@ export default defineContentScript({
 
       container.append(addSeed, addNegative);
     } else if (kind === 'tag') {
+      const addSeed = document.createElement('button');
+      addSeed.textContent = 'Add as seed';
+      addSeed.type = 'button';
+      addSeed.style.cssText = buttonStyle;
+      addSeed.addEventListener('click', () => {
+        void sendMessage({ type: 'AddSeedFromTab' });
+        addSeed.textContent = 'Added!';
+        addSeed.disabled = true;
+      });
+
       const avoidTag = document.createElement('button');
       avoidTag.textContent = 'Avoid this tag';
       avoidTag.type = 'button';
@@ -60,7 +70,7 @@ export default defineContentScript({
         avoidTag.textContent = 'Avoided!';
         avoidTag.disabled = true;
       });
-      container.append(avoidTag);
+      container.append(addSeed, avoidTag);
     }
 
     document.body.appendChild(container);

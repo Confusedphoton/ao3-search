@@ -43,10 +43,15 @@ export interface WorkMergeInput {
   explored?: boolean;
 }
 
+export interface ListedWorkInput {
+  workId: string;
+  title: string;
+}
+
 export interface TagMergeInput {
   tagName: string;
   workCount: number | null;
-  workIds: string[];
+  works: ListedWorkInput[];
   explored?: boolean;
 }
 
@@ -54,6 +59,6 @@ export interface AuthorMergeInput {
   authorKey: string;
   displayName: string;
   workCount: number | null;
-  workIds: string[];
+  works: ListedWorkInput[];
   explored?: boolean;
 }

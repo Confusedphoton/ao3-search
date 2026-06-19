@@ -1,10 +1,11 @@
 import type { PageData } from '../ao3/types';
 
-export interface SeedWork {
-  workId: string;
-  title: string;
-  url: string;
-}
+export type PositiveSeed =
+  | { kind: 'work'; workId: string; title: string; url: string }
+  | { kind: 'tag'; tagName: string; url: string };
+
+/** @deprecated Use PositiveSeed */
+export type SeedWork = Extract<PositiveSeed, { kind: 'work' }>;
 
 export type NegativeSeed =
   | { kind: 'work'; workId: string; title: string; url: string }
@@ -16,6 +17,7 @@ export interface SearchProgressPayload {
   expansionBudget: number;
   frontierSize: number;
   message?: string;
+  previewResults?: SearchResultItem[];
 }
 
 export interface SearchResultItem {
@@ -48,21 +50,30 @@ export interface PPRResultPayload {
   delta: number;
 }
 
+export interface GraphTagMatch {
+  tagName: string;
+  workCount: number | null;
+}
+
 export type ExtensionMessage =
   | { type: 'PageDataIngested'; payload: PageData }
   | { type: 'AddSeedFromTab' }
-  | { type: 'RemoveSeed'; workId: string }
+  | { type: 'AddSeedTag'; tagName: string }
+  | { type: 'RemoveSeed'; kind: 'work' | 'tag'; key: string }
   | { type: 'AddNegativeWorkFromTab' }
   | { type: 'AddNegativeTagFromTab' }
   | { type: 'AddNegativeTag'; tagName: string }
   | { type: 'RemoveNegativeSeed'; kind: 'work' | 'tag'; key: string }
+  | { type: 'SearchGraphTags'; query: string }
+  | { type: 'GraphTagResults'; tags: GraphTagMatch[] }
   | { type: 'GetState' }
   | {
       type: 'StateUpdate';
-      seeds: SeedWork[];
+      seeds: PositiveSeed[];
       negativeSeeds: NegativeSeed[];
       searching: boolean;
       progress: SearchProgressPayload | null;
+      results: SearchResultItem[];
     }
   | { type: 'StartSearch' }
   | { type: 'CancelSearch' }

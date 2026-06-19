@@ -1,4 +1,4 @@
-import type { NegativeSeed } from '../messaging/types';
+import type { NegativeSeed, PositiveSeed } from '../messaging/types';
 import { REQUEST_INTERVAL_MS, REQUEST_JITTER_MS, MAX_FETCH_RETRIES } from '../config/constants';
 import {
   authorWorksUrl,
@@ -76,7 +76,7 @@ export class RequestScheduler {
         authorKey: parsed.authorKey,
         displayName: parsed.displayName,
         workCount: parsed.workCount,
-        workIds: parsed.workIds,
+        works: parsed.works,
         explored: true,
       });
       return;
@@ -86,12 +86,12 @@ export class RequestScheduler {
     const html = await this.fetchWithRetry(url);
     const parsed = parseTagPageFromHtml(html, url);
     if (!parsed) throw new Error(`Failed to parse tag page ${node.key}`);
-    await mergeTagPage({
-      tagName: parsed.tagName,
-      workCount: parsed.workCount,
-      workIds: parsed.workIds,
-      explored: true,
-    });
+      await mergeTagPage({
+        tagName: parsed.tagName,
+        workCount: parsed.workCount,
+        works: parsed.works,
+        explored: true,
+      });
   }
 
   async ensureSeedWorks(workIds: string[]): Promise<void> {
@@ -99,6 +99,25 @@ export class RequestScheduler {
       const existing = await getWorkNode(workId);
       if (existing?.explored) continue;
       await this.fetchWork(workId);
+    }
+  }
+
+  async ensureSeedTags(tagNames: string[]): Promise<void> {
+    for (const tagName of tagNames) {
+      await this.ensureTagSeed(tagName);
+    }
+  }
+
+  async ensurePositiveSeeds(seeds: PositiveSeed[]): Promise<void> {
+    for (const seed of seeds) {
+      if (seed.kind === 'work') {
+        const existing = await getWorkNode(seed.workId);
+        if (existing?.explored) continue;
+        await this.fetchWork(seed.workId);
+        continue;
+      }
+
+      await this.ensureTagSeed(seed.tagName);
     }
   }
 
@@ -111,20 +130,24 @@ export class RequestScheduler {
         continue;
       }
 
-      const existing = await getTagNode(seed.tagName);
-      if (existing?.explored) continue;
+      await this.ensureTagSeed(seed.tagName);
+    }
+  }
 
-      const url = tagWorksUrl(seed.tagName);
-      const html = await this.fetchWithRetry(url);
-      const parsed = parseTagPageFromHtml(html, url);
-      if (!parsed) throw new Error(`Failed to parse tag page ${seed.tagName}`);
+  private async ensureTagSeed(tagName: string): Promise<void> {
+    const existing = await getTagNode(tagName);
+    if (existing?.explored) return;
+
+    const url = tagWorksUrl(tagName);
+    const html = await this.fetchWithRetry(url);
+    const parsed = parseTagPageFromHtml(html, url);
+    if (!parsed) throw new Error(`Failed to parse tag page ${tagName}`);
       await mergeTagPage({
         tagName: parsed.tagName,
         workCount: parsed.workCount,
-        workIds: parsed.workIds,
+        works: parsed.works,
         explored: true,
       });
-    }
   }
 
   private async fetchWithRetry(url: string): Promise<string> {

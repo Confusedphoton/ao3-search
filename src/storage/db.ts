@@ -121,6 +121,20 @@ async function getNodeByKey(kind: NodeKind, key: string): Promise<GraphNode | nu
   });
 }
 
+function isPlaceholderWorkTitle(workId: string, title: string | undefined): boolean {
+  return !title || title === `Work ${workId}`;
+}
+
+function mergeWorkTitle(
+  workId: string,
+  existing: string | undefined,
+  next: string | undefined,
+): string | undefined {
+  if (!next || isPlaceholderWorkTitle(workId, next)) return existing ?? next;
+  if (isPlaceholderWorkTitle(workId, existing)) return next;
+  return existing ?? next;
+}
+
 async function upsertNode(
   kind: NodeKind,
   key: string,
@@ -128,7 +142,11 @@ async function upsertNode(
 ): Promise<GraphNode> {
   const existing = await getNodeByKey(kind, key);
   if (existing) {
-    const updated: GraphNode = { ...existing, ...patch, kind, key };
+    const title =
+      kind === NodeKind.Work
+        ? mergeWorkTitle(key, existing.title, patch.title)
+        : patch.title ?? existing.title;
+    const updated: GraphNode = { ...existing, ...patch, title, kind, key };
     await tx(['nodes'], 'readwrite', async (transaction) => {
       transaction.objectStore('nodes').put(updated);
     });
@@ -237,9 +255,9 @@ export async function mergeTagPage(input: TagMergeInput): Promise<GraphNode> {
     explored: input.explored ?? true,
   });
 
-  for (const workId of input.workIds) {
-    const workNode = await upsertNode(NodeKind.Work, workId, {
-      title: `Work ${workId}`,
+  for (const work of input.works) {
+    const workNode = await upsertNode(NodeKind.Work, work.workId, {
+      title: work.title,
       explored: false,
     });
     await addEdge(workNode.id, tagNode.id);
@@ -255,9 +273,9 @@ export async function mergeAuthorPage(input: AuthorMergeInput): Promise<GraphNod
     explored: input.explored ?? true,
   });
 
-  for (const workId of input.workIds) {
-    const workNode = await upsertNode(NodeKind.Work, workId, {
-      title: `Work ${workId}`,
+  for (const work of input.works) {
+    const workNode = await upsertNode(NodeKind.Work, work.workId, {
+      title: work.title,
       explored: false,
     });
     await addAuthorEdge(workNode.id, authorNode.id);
@@ -287,6 +305,24 @@ export async function getTagNode(tagName: string): Promise<GraphNode | null> {
 
 export async function getAuthorNode(authorKey: string): Promise<GraphNode | null> {
   return getNodeByKey(NodeKind.Author, authorKey);
+}
+
+export async function searchTagNodes(query: string, limit = 8): Promise<GraphNode[]> {
+  const normalized = query.trim().toLowerCase();
+  if (!normalized) return [];
+
+  return tx('nodes', 'readonly', async (transaction) => {
+    const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
+    return nodes
+      .filter((node) => node.kind === NodeKind.Tag && node.key.toLowerCase().includes(normalized))
+      .sort((a, b) => {
+        const freqA = a.calibratedFreq ?? a.estimatedFreq;
+        const freqB = b.calibratedFreq ?? b.estimatedFreq;
+        if (freqB !== freqA) return freqB - freqA;
+        return a.key.localeCompare(b.key);
+      })
+      .slice(0, limit);
+  });
 }
 
 export async function loadGraphSnapshot(): Promise<GraphSnapshot> {

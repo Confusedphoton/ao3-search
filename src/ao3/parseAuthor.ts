@@ -1,11 +1,7 @@
+import { parseListedWorks } from './parseListings';
 import { selectors, tagCountPattern } from './selectors';
 import type { AuthorPageData } from './types';
 import { authorWorksUrl, parseAuthorKeyFromUrl } from './types';
-
-function parseWorkIdFromHref(href: string): string | null {
-  const match = href.match(/\/works\/(\d+)/);
-  return match ? match[1] : null;
-}
 
 export function parseAuthorPage(doc: Document, url: string): AuthorPageData | null {
   const authorKey = parseAuthorKeyFromUrl(url);
@@ -20,20 +16,12 @@ export function parseAuthorPage(doc: Document, url: string): AuthorPageData | nu
   const displayName =
     heading.replace(/\s*-\s*Works.*$/i, '').replace(/^Works by\s+/i, '').trim() || authorKey;
 
-  const workIds: string[] = [];
-  for (const link of doc.querySelectorAll(selectors.workListing)) {
-    const href = link.getAttribute('href');
-    if (!href) continue;
-    const workId = parseWorkIdFromHref(href);
-    if (workId) workIds.push(workId);
-  }
-
   return {
     kind: 'author',
     authorKey,
     displayName,
     workCount,
-    workIds,
+    works: parseListedWorks(doc),
     url: authorWorksUrl(authorKey),
   };
 }

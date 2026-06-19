@@ -26,7 +26,7 @@ export function parseWorkPage(doc: Document, url: string): WorkPageData | null {
   if (!workId) return null;
 
   const titleEl = doc.querySelector(selectors.workTitle);
-  const title = titleEl?.textContent?.trim() || `Work ${workId}`;
+  const title = titleEl?.textContent?.trim().replace(/\s+/g, ' ') || `Work ${workId}`;
 
   const tagEls = doc.querySelectorAll(selectors.workTags);
   const tags = [...tagEls]
