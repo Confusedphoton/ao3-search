@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseAuthorPageFromHtml, parseTagPageFromHtml, parseWorkPageFromHtml } from '@/src/ao3';
+import { parseAuthorKeyFromUrl } from '@/src/ao3/types';
 
 const workHtml = `
 <html><body>
@@ -97,5 +98,15 @@ describe('AO3 parsers', () => {
     expect(parsed?.authors).toEqual([
       { key: 'Lake/pseuds/PseudName', displayName: 'Pseud Name' },
     ]);
+  });
+
+  it('parses author keys from pseudonym listing pages', () => {
+    expect(
+      parseAuthorKeyFromUrl('https://archiveofourown.org/users/Lake/pseuds/PseudName/works'),
+    ).toBe('Lake/pseuds/PseudName');
+    expect(
+      parseAuthorKeyFromUrl('https://archiveofourown.org/users/Lake/pseuds/PseudName'),
+    ).toBe('Lake/pseuds/PseudName');
+    expect(parseAuthorKeyFromUrl('https://archiveofourown.org/users/login')).toBeNull();
   });
 });

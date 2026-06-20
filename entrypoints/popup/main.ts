@@ -9,7 +9,7 @@ import type {
 } from '@/src/messaging/types';
 import { isExtensionMessage } from '@/src/messaging/types';
 import { sendMessage } from '@/src/messaging/protocol';
-import { tagWorksUrl } from '@/src/ao3/types';
+import { authorWorksUrl, tagWorksUrl } from '@/src/ao3/types';
 import { MAX_NEGATIVE_SEEDS, MAX_SEEDS, MIN_SEEDS } from '@/src/config/constants';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -25,19 +25,27 @@ let statusHint = '';
 let tagSearchTimer: ReturnType<typeof setTimeout> | null = null;
 
 function positiveSeedLabel(seed: PositiveSeed): string {
-  return seed.kind === 'work' ? seed.title : seed.tagName;
+  if (seed.kind === 'work') return seed.title;
+  if (seed.kind === 'tag') return seed.tagName;
+  return seed.displayName;
 }
 
 function positiveSeedKey(seed: PositiveSeed): string {
-  return seed.kind === 'work' ? seed.workId : seed.tagName;
+  if (seed.kind === 'work') return seed.workId;
+  if (seed.kind === 'tag') return seed.tagName;
+  return seed.authorKey;
 }
 
 function negativeSeedLabel(seed: NegativeSeed): string {
-  return seed.kind === 'work' ? seed.title : seed.tagName;
+  if (seed.kind === 'work') return seed.title;
+  if (seed.kind === 'tag') return seed.tagName;
+  return seed.displayName;
 }
 
 function negativeSeedKey(seed: NegativeSeed): string {
-  return seed.kind === 'work' ? seed.workId : seed.tagName;
+  if (seed.kind === 'work') return seed.workId;
+  if (seed.kind === 'tag') return seed.tagName;
+  return seed.authorKey;
 }
 
 function renderTagSuggestions(): string {
@@ -84,7 +92,7 @@ function render(): void {
         <h2>Query seeds (${seeds.length}/${MAX_SEEDS})</h2>
         <button id="add-seed" type="button" ${searching ? 'disabled' : ''}>Add current tab</button>
       </div>
-      <p class="hint">Works or tags that define what you want. Tags from your graph are the natural query for PPR.</p>
+      <p class="hint">Works, tags, or authors that define what you want.</p>
       <div class="tag-search">
         <form id="add-seed-tag-form" class="tag-form">
           <input
@@ -102,7 +110,7 @@ function render(): void {
       <ul id="seed-list">
         ${
           seeds.length === 0
-            ? `<li class="empty">Add ${MIN_SEEDS}–${MAX_SEEDS} works or tags.</li>`
+            ? `<li class="empty">Add ${MIN_SEEDS}–${MAX_SEEDS} works, tags, or authors.</li>`
             : seeds
                 .map(
                   (seed) => `
@@ -122,7 +130,7 @@ function render(): void {
         <h2>Avoid (${negativeSeeds.length}/${MAX_NEGATIVE_SEEDS})</h2>
         <button id="add-negative-work" type="button" ${searching ? 'disabled' : ''}>Add current tab</button>
       </div>
-      <p class="hint">Works or tags to penalize — e.g. Major Character Death.</p>
+      <p class="hint">Works, tags, or authors to penalize — e.g. Major Character Death.</p>
       <form id="add-negative-tag-form" class="tag-form">
         <input
           id="negative-tag-input"
@@ -208,7 +216,7 @@ function bindEvents(): void {
   document.querySelector('#add-seed')?.addEventListener('click', () => {
     void dispatch({ type: 'AddSeedFromTab' }).then((beforeCount) => {
       if (seeds.length === beforeCount) {
-        statusHint = 'Open an AO3 work or tag page, then try again.';
+        statusHint = 'Open an AO3 work, tag, or author page, then try again.';
         render();
       }
     });
@@ -217,7 +225,7 @@ function bindEvents(): void {
   document.querySelector('#add-negative-work')?.addEventListener('click', () => {
     void dispatch({ type: 'AddNegativeWorkFromTab' }).then((beforeCount) => {
       if (negativeSeeds.length === beforeCount) {
-        statusHint = 'Open an AO3 work page to add a negative seed.';
+        statusHint = 'Open an AO3 work, tag, or author page to add a negative seed.';
         render();
       }
     });
@@ -290,7 +298,7 @@ function bindEvents(): void {
     el.addEventListener('click', () => {
       const kind = el.getAttribute('data-remove-seed-kind');
       const key = el.getAttribute('data-remove-seed-key');
-      if ((kind === 'work' || kind === 'tag') && key) {
+      if ((kind === 'work' || kind === 'tag' || kind === 'author') && key) {
         void dispatch({ type: 'RemoveSeed', kind, key });
       }
     });
@@ -300,7 +308,7 @@ function bindEvents(): void {
     el.addEventListener('click', () => {
       const kind = el.getAttribute('data-remove-negative-kind');
       const key = el.getAttribute('data-remove-negative-key');
-      if ((kind === 'work' || kind === 'tag') && key) {
+      if ((kind === 'work' || kind === 'tag' || kind === 'author') && key) {
         void dispatch({ type: 'RemoveNegativeSeed', kind, key });
       }
     });
@@ -380,6 +388,45 @@ function normalizeStoredSeed(raw: unknown): PositiveSeed | null {
       url: typeof record.url === 'string' ? record.url : tagWorksUrl(record.tagName),
     };
   }
+  if (record.kind === 'author' && typeof record.authorKey === 'string') {
+    return {
+      kind: 'author',
+      authorKey: record.authorKey,
+      displayName:
+        typeof record.displayName === 'string' ? record.displayName : record.authorKey,
+      url: typeof record.url === 'string' ? record.url : authorWorksUrl(record.authorKey),
+    };
+  }
+  if (typeof record.workId === 'string') {
+    return {
+      kind: 'work',
+      workId: record.workId,
+      title: typeof record.title === 'string' ? record.title : `Work ${record.workId}`,
+      url: typeof record.url === 'string' ? record.url : `https://archiveofourown.org/works/${record.workId}`,
+    };
+  }
+  return null;
+}
+
+function normalizeStoredNegativeSeed(raw: unknown): NegativeSeed | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (record.kind === 'tag' && typeof record.tagName === 'string') {
+    return {
+      kind: 'tag',
+      tagName: record.tagName,
+      url: typeof record.url === 'string' ? record.url : tagWorksUrl(record.tagName),
+    };
+  }
+  if (record.kind === 'author' && typeof record.authorKey === 'string') {
+    return {
+      kind: 'author',
+      authorKey: record.authorKey,
+      displayName:
+        typeof record.displayName === 'string' ? record.displayName : record.authorKey,
+      url: typeof record.url === 'string' ? record.url : authorWorksUrl(record.authorKey),
+    };
+  }
   if (typeof record.workId === 'string') {
     return {
       kind: 'work',
@@ -415,7 +462,9 @@ async function loadInitialState(): Promise<void> {
       .filter((seed): seed is PositiveSeed => seed !== null);
   }
   if (Array.isArray(stored.negativeSeeds)) {
-    negativeSeeds = stored.negativeSeeds as NegativeSeed[];
+    negativeSeeds = stored.negativeSeeds
+      .map((seed) => normalizeStoredNegativeSeed(seed))
+      .filter((seed): seed is NegativeSeed => seed !== null);
   }
   if (Array.isArray(stored.lastResults)) {
     results = stored.lastResults as SearchResultItem[];

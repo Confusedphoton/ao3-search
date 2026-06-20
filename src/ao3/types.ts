@@ -63,10 +63,22 @@ export function parseAuthorKeyFromHref(href: string): string | null {
   return match[1].replace(/\/$/, '');
 }
 
+const RESERVED_USER_PATHS = new Set([
+  'login',
+  'sign_up',
+  'account',
+  'dashboard',
+  'password',
+  'support',
+  'besignedup',
+]);
+
 export function parseAuthorKeyFromUrl(url: string): string | null {
-  const match = url.match(/\/users\/([^?#]+?)\/works/);
+  const match = url.match(/\/users\/([^/?#]+(?:\/pseuds\/[^/?#]+)?)(?:\/works)?(?:[/?#]|$)/);
   if (!match) return null;
-  return match[1].replace(/\/$/, '');
+  const key = match[1].replace(/\/$/, '');
+  if (RESERVED_USER_PATHS.has(key.split('/')[0])) return null;
+  return key;
 }
 
 export function detectPageKind(url: string): PageKind {

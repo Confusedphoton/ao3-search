@@ -147,25 +147,44 @@ export function seedIndicesForTags(csr: CSRGraph, tagNames: string[]): number[] 
   return indices;
 }
 
+export function seedIndicesForAuthors(csr: CSRGraph, authorKeys: string[]): number[] {
+  const indices: number[] = [];
+  for (const authorKey of authorKeys) {
+    for (let i = 0; i < csr.nodeByIndex.length; i++) {
+      const node = csr.nodeByIndex[i];
+      if (node.kind === NodeKind.Author && node.key === authorKey) {
+        indices.push(i);
+        break;
+      }
+    }
+  }
+  return indices;
+}
+
 export function seedIndicesForNegativeSeeds(
   csr: CSRGraph,
-  negativeSeeds: Array<{ kind: 'work' | 'tag'; key: string }>,
+  negativeSeeds: Array<{ kind: 'work' | 'tag' | 'author'; key: string }>,
 ): number[] {
   return seedIndicesForSignedSeeds(csr, negativeSeeds);
 }
 
 export function seedIndicesForPositiveSeeds(
   csr: CSRGraph,
-  positiveSeeds: Array<{ kind: 'work' | 'tag'; key: string }>,
+  positiveSeeds: Array<{ kind: 'work' | 'tag' | 'author'; key: string }>,
 ): number[] {
   return seedIndicesForSignedSeeds(csr, positiveSeeds);
 }
 
 function seedIndicesForSignedSeeds(
   csr: CSRGraph,
-  seeds: Array<{ kind: 'work' | 'tag'; key: string }>,
+  seeds: Array<{ kind: 'work' | 'tag' | 'author'; key: string }>,
 ): number[] {
   const workIds = seeds.filter((s) => s.kind === 'work').map((s) => s.key);
   const tagNames = seeds.filter((s) => s.kind === 'tag').map((s) => s.key);
-  return [...seedIndicesForWorks(csr, workIds), ...seedIndicesForTags(csr, tagNames)];
+  const authorKeys = seeds.filter((s) => s.kind === 'author').map((s) => s.key);
+  return [
+    ...seedIndicesForWorks(csr, workIds),
+    ...seedIndicesForTags(csr, tagNames),
+    ...seedIndicesForAuthors(csr, authorKeys),
+  ];
 }

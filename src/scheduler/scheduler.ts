@@ -117,7 +117,12 @@ export class RequestScheduler {
         continue;
       }
 
-      await this.ensureTagSeed(seed.tagName);
+      if (seed.kind === 'tag') {
+        await this.ensureTagSeed(seed.tagName);
+        continue;
+      }
+
+      await this.ensureAuthorSeed(seed.authorKey);
     }
   }
 
@@ -130,7 +135,12 @@ export class RequestScheduler {
         continue;
       }
 
-      await this.ensureTagSeed(seed.tagName);
+      if (seed.kind === 'tag') {
+        await this.ensureTagSeed(seed.tagName);
+        continue;
+      }
+
+      await this.ensureAuthorSeed(seed.authorKey);
     }
   }
 
@@ -148,6 +158,23 @@ export class RequestScheduler {
         works: parsed.works,
         explored: true,
       });
+  }
+
+  private async ensureAuthorSeed(authorKey: string): Promise<void> {
+    const existing = await getAuthorNode(authorKey);
+    if (existing?.explored) return;
+
+    const url = authorWorksUrl(authorKey);
+    const html = await this.fetchWithRetry(url);
+    const parsed = parseAuthorPageFromHtml(html, url);
+    if (!parsed) throw new Error(`Failed to parse author page ${authorKey}`);
+    await mergeAuthorPage({
+      authorKey: parsed.authorKey,
+      displayName: parsed.displayName,
+      workCount: parsed.workCount,
+      works: parsed.works,
+      explored: true,
+    });
   }
 
   private async fetchWithRetry(url: string): Promise<string> {

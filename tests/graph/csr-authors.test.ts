@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildCSR } from '@/src/graph/csr';
+import { buildCSR, seedIndicesForPositiveSeeds } from '@/src/graph/csr';
 import { NodeKind, type GraphSnapshot } from '@/src/graph/types';
 
 describe('buildCSR author edges', () => {
@@ -37,5 +37,24 @@ describe('buildCSR author edges', () => {
     const authorNeighbors = csr.neighbors.slice(authorStart, authorEnd);
     expect(authorNeighbors).toContain(workSeedIndex);
     expect(authorNeighbors).toContain(workOtherIndex);
+  });
+
+  it('resolves author seeds to graph indices', () => {
+    const snapshot: GraphSnapshot = {
+      nodes: [
+        { id: 1, kind: NodeKind.Work, key: '100', title: 'Seed', estimatedFreq: 1, calibratedFreq: null, explored: true },
+        { id: 2, kind: NodeKind.Author, key: 'Lake/pseuds/PseudName', title: 'Pseud Name', estimatedFreq: 2, calibratedFreq: null, explored: false },
+      ],
+      edges: [],
+      authorEdges: [{ workNodeId: 1, authorNodeId: 2 }],
+    };
+
+    const csr = buildCSR(snapshot);
+    const indices = seedIndicesForPositiveSeeds(csr, [
+      { kind: 'author', key: 'Lake/pseuds/PseudName' },
+    ]);
+
+    expect(indices).toHaveLength(1);
+    expect(csr.nodeByIndex[indices[0]].key).toBe('Lake/pseuds/PseudName');
   });
 });

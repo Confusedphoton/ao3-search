@@ -71,6 +71,27 @@ export default defineContentScript({
         avoidTag.disabled = true;
       });
       container.append(addSeed, avoidTag);
+    } else if (kind === 'author') {
+      const addSeed = document.createElement('button');
+      addSeed.textContent = 'Add as seed';
+      addSeed.type = 'button';
+      addSeed.style.cssText = buttonStyle;
+      addSeed.addEventListener('click', () => {
+        void sendMessage({ type: 'AddSeedFromTab' });
+        addSeed.textContent = 'Added!';
+        addSeed.disabled = true;
+      });
+
+      const avoidAuthor = document.createElement('button');
+      avoidAuthor.textContent = 'Avoid this author';
+      avoidAuthor.type = 'button';
+      avoidAuthor.style.cssText = buttonStyle + 'border-color:#555;color:#333;';
+      avoidAuthor.addEventListener('click', () => {
+        void sendMessage({ type: 'AddNegativeWorkFromTab' });
+        avoidAuthor.textContent = 'Avoided!';
+        avoidAuthor.disabled = true;
+      });
+      container.append(addSeed, avoidAuthor);
     }
 
     document.body.appendChild(container);

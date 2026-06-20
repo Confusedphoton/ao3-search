@@ -1,5 +1,5 @@
 import type { PageData } from '@/src/ao3/types';
-import { tagWorksUrl } from '@/src/ao3/types';
+import { authorWorksUrl, parseAuthorKeyFromUrl, tagWorksUrl } from '@/src/ao3/types';
 import type {
   ExtensionMessage,
   GraphTagMatch,
@@ -39,7 +39,10 @@ async function loadPersistedState(): Promise<void> {
     seeds.splice(0, seeds.length, ...normalized);
   }
   if (Array.isArray(stored.negativeSeeds)) {
-    negativeSeeds.splice(0, negativeSeeds.length, ...(stored.negativeSeeds as NegativeSeed[]));
+    const normalized = stored.negativeSeeds
+      .map((seed) => normalizeStoredNegativeSeed(seed))
+      .filter((seed): seed is NegativeSeed => seed !== null);
+    negativeSeeds.splice(0, negativeSeeds.length, ...normalized);
   }
   if (Array.isArray(stored.lastResults)) {
     lastResults = stored.lastResults as SearchResultItem[];
@@ -64,6 +67,15 @@ function normalizeStoredSeed(raw: unknown): PositiveSeed | null {
       url: typeof record.url === 'string' ? record.url : tagWorksUrl(record.tagName),
     };
   }
+  if (record.kind === 'author' && typeof record.authorKey === 'string') {
+    return {
+      kind: 'author',
+      authorKey: record.authorKey,
+      displayName:
+        typeof record.displayName === 'string' ? record.displayName : record.authorKey,
+      url: typeof record.url === 'string' ? record.url : authorWorksUrl(record.authorKey),
+    };
+  }
   if (typeof record.workId === 'string') {
     return {
       kind: 'work',
@@ -73,6 +85,40 @@ function normalizeStoredSeed(raw: unknown): PositiveSeed | null {
     };
   }
   return null;
+}
+
+function normalizeStoredNegativeSeed(raw: unknown): NegativeSeed | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (record.kind === 'tag' && typeof record.tagName === 'string') {
+    return {
+      kind: 'tag',
+      tagName: record.tagName,
+      url: typeof record.url === 'string' ? record.url : tagWorksUrl(record.tagName),
+    };
+  }
+  if (record.kind === 'author' && typeof record.authorKey === 'string') {
+    return {
+      kind: 'author',
+      authorKey: record.authorKey,
+      displayName:
+        typeof record.displayName === 'string' ? record.displayName : record.authorKey,
+      url: typeof record.url === 'string' ? record.url : authorWorksUrl(record.authorKey),
+    };
+  }
+  if (typeof record.workId === 'string') {
+    return {
+      kind: 'work',
+      workId: record.workId,
+      title: typeof record.title === 'string' ? record.title : `Work ${record.workId}`,
+      url: typeof record.url === 'string' ? record.url : `https://archiveofourown.org/works/${record.workId}`,
+    };
+  }
+  return null;
+}
+
+function authorDisplayNameFromTitle(authorKey: string, title: string): string {
+  return title.replace(/\s*-\s*Works.*$/i, '').replace(/^Works by\s+/i, '').trim() || authorKey;
 }
 
 function stateUpdate(
@@ -104,6 +150,7 @@ async function readTabPageInfo(tabId: number): Promise<{
   url: string;
   workId: string | null;
   tagName: string | null;
+  authorKey: string | null;
   title: string;
 }> {
   const results = await browser.scripting.executeScript({
@@ -121,14 +168,18 @@ async function readTabPageInfo(tabId: number): Promise<{
     },
   });
 
-  return (
+  const raw =
     (results[0]?.result as {
       url: string;
       workId: string | null;
       tagName: string | null;
       title: string;
-    } | undefined) ?? { url: '', workId: null, tagName: null, title: '' }
-  );
+    } | undefined) ?? { url: '', workId: null, tagName: null, title: '' };
+
+  return {
+    ...raw,
+    authorKey: parseAuthorKeyFromUrl(raw.url),
+  };
 }
 
 async function ingestPageData(payload: PageData): Promise<void> {
@@ -175,6 +226,26 @@ function isNegativeTagSeed(tagName: string): boolean {
   return negativeSeeds.some((s) => s.kind === 'tag' && s.tagName === tagName);
 }
 
+function isPositiveAuthorSeed(authorKey: string): boolean {
+  return seeds.some((s) => s.kind === 'author' && s.authorKey === authorKey);
+}
+
+function isNegativeAuthorSeed(authorKey: string): boolean {
+  return negativeSeeds.some((s) => s.kind === 'author' && s.authorKey === authorKey);
+}
+
+function positiveSeedKey(seed: PositiveSeed): string {
+  if (seed.kind === 'work') return seed.workId;
+  if (seed.kind === 'tag') return seed.tagName;
+  return seed.authorKey;
+}
+
+function negativeSeedKey(seed: NegativeSeed): string {
+  if (seed.kind === 'work') return seed.workId;
+  if (seed.kind === 'tag') return seed.tagName;
+  return seed.authorKey;
+}
+
 async function addSeedFromTab(sender: Browser.runtime.MessageSender): Promise<ExtensionMessage> {
   const tabId = await getActiveTabId(sender);
   if (!tabId) return stateUpdate(searching);
@@ -210,6 +281,23 @@ async function addSeedFromTab(sender: Browser.runtime.MessageSender): Promise<Ex
     });
     await persistUiState();
     await publishState();
+    return stateUpdate(searching);
+  }
+
+  if (info.authorKey) {
+    if (isPositiveAuthorSeed(info.authorKey) || isNegativeAuthorSeed(info.authorKey)) {
+      return stateUpdate(searching);
+    }
+    if (seeds.length >= MAX_SEEDS) return stateUpdate(searching);
+
+    seeds.push({
+      kind: 'author',
+      authorKey: info.authorKey,
+      displayName: authorDisplayNameFromTitle(info.authorKey, info.title),
+      url: authorWorksUrl(info.authorKey),
+    });
+    await persistUiState();
+    await publishState();
   }
 
   return stateUpdate(searching);
@@ -237,24 +325,56 @@ async function addNegativeWorkFromTab(sender: Browser.runtime.MessageSender): Pr
   if (!tabId) return stateUpdate(searching);
 
   const info = await readTabPageInfo(tabId);
-  if (!info.workId) return stateUpdate(searching);
 
-  if (isPositiveWorkSeed(info.workId) || isNegativeWorkSeed(info.workId)) {
+  if (info.workId) {
+    if (isPositiveWorkSeed(info.workId) || isNegativeWorkSeed(info.workId)) {
+      return stateUpdate(searching);
+    }
+    if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) return stateUpdate(searching);
+
+    negativeSeeds.push({
+      kind: 'work',
+      workId: info.workId,
+      title: info.title || `Work ${info.workId}`,
+      url: info.url,
+    });
+    await persistUiState();
+    await publishState();
     return stateUpdate(searching);
   }
 
-  if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) {
+  if (info.tagName) {
+    if (isPositiveTagSeed(info.tagName) || isNegativeTagSeed(info.tagName)) {
+      return stateUpdate(searching);
+    }
+    if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) return stateUpdate(searching);
+
+    negativeSeeds.push({
+      kind: 'tag',
+      tagName: info.tagName,
+      url: info.url,
+    });
+    await persistUiState();
+    await publishState();
     return stateUpdate(searching);
   }
 
-  negativeSeeds.push({
-    kind: 'work',
-    workId: info.workId,
-    title: info.title || `Work ${info.workId}`,
-    url: info.url,
-  });
-  await persistUiState();
-  await publishState();
+  if (info.authorKey) {
+    if (isPositiveAuthorSeed(info.authorKey) || isNegativeAuthorSeed(info.authorKey)) {
+      return stateUpdate(searching);
+    }
+    if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) return stateUpdate(searching);
+
+    negativeSeeds.push({
+      kind: 'author',
+      authorKey: info.authorKey,
+      displayName: authorDisplayNameFromTitle(info.authorKey, info.title),
+      url: authorWorksUrl(info.authorKey),
+    });
+    await persistUiState();
+    await publishState();
+  }
+
   return stateUpdate(searching);
 }
 
@@ -343,9 +463,7 @@ onMessage(async (message, sender) => {
 
     case 'RemoveSeed': {
       const index = seeds.findIndex(
-        (s) =>
-          s.kind === message.kind &&
-          (s.kind === 'work' ? s.workId === message.key : s.tagName === message.key),
+        (s) => s.kind === message.kind && positiveSeedKey(s) === message.key,
       );
       if (index >= 0) seeds.splice(index, 1);
       await persistUiState();
@@ -354,8 +472,8 @@ onMessage(async (message, sender) => {
     }
 
     case 'RemoveNegativeSeed': {
-      const index = negativeSeeds.findIndex((s) =>
-        s.kind === message.kind && (s.kind === 'work' ? s.workId === message.key : s.tagName === message.key),
+      const index = negativeSeeds.findIndex(
+        (s) => s.kind === message.kind && negativeSeedKey(s) === message.key,
       );
       if (index >= 0) negativeSeeds.splice(index, 1);
       await persistUiState();

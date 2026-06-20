@@ -44,13 +44,17 @@ export class SearchOrchestrator {
     onProgress: (payload: SearchProgressPayload) => void,
   ): Promise<SearchRunResult> {
     this.cancelled = false;
-    const positiveKeys = seeds.map((s) =>
-      s.kind === 'work' ? { kind: 'work' as const, key: s.workId } : { kind: 'tag' as const, key: s.tagName },
-    );
+    const positiveKeys = seeds.map((s) => {
+      if (s.kind === 'work') return { kind: 'work' as const, key: s.workId };
+      if (s.kind === 'tag') return { kind: 'tag' as const, key: s.tagName };
+      return { kind: 'author' as const, key: s.authorKey };
+    });
     const seedWorkIds = seeds.filter((s) => s.kind === 'work').map((s) => s.workId);
-    const negativeKeys = negativeSeeds.map((s) =>
-      s.kind === 'work' ? { kind: 'work' as const, key: s.workId } : { kind: 'tag' as const, key: s.tagName },
-    );
+    const negativeKeys = negativeSeeds.map((s) => {
+      if (s.kind === 'work') return { kind: 'work' as const, key: s.workId };
+      if (s.kind === 'tag') return { kind: 'tag' as const, key: s.tagName };
+      return { kind: 'author' as const, key: s.authorKey };
+    });
     let requestsUsed = 0;
 
     onProgress({

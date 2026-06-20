@@ -2,14 +2,16 @@ import type { PageData } from '../ao3/types';
 
 export type PositiveSeed =
   | { kind: 'work'; workId: string; title: string; url: string }
-  | { kind: 'tag'; tagName: string; url: string };
+  | { kind: 'tag'; tagName: string; url: string }
+  | { kind: 'author'; authorKey: string; displayName: string; url: string };
 
 /** @deprecated Use PositiveSeed */
 export type SeedWork = Extract<PositiveSeed, { kind: 'work' }>;
 
 export type NegativeSeed =
   | { kind: 'work'; workId: string; title: string; url: string }
-  | { kind: 'tag'; tagName: string; url: string };
+  | { kind: 'tag'; tagName: string; url: string }
+  | { kind: 'author'; authorKey: string; displayName: string; url: string };
 
 export interface SearchProgressPayload {
   phase: 'cold-start' | 'expanding' | 'ranking' | 'done' | 'error';
@@ -82,11 +84,11 @@ export type ExtensionMessage =
   | { type: 'PageDataIngested'; payload: PageData }
   | { type: 'AddSeedFromTab' }
   | { type: 'AddSeedTag'; tagName: string }
-  | { type: 'RemoveSeed'; kind: 'work' | 'tag'; key: string }
+  | { type: 'RemoveSeed'; kind: 'work' | 'tag' | 'author'; key: string }
   | { type: 'AddNegativeWorkFromTab' }
   | { type: 'AddNegativeTagFromTab' }
   | { type: 'AddNegativeTag'; tagName: string }
-  | { type: 'RemoveNegativeSeed'; kind: 'work' | 'tag'; key: string }
+  | { type: 'RemoveNegativeSeed'; kind: 'work' | 'tag' | 'author'; key: string }
   | { type: 'SearchGraphTags'; query: string }
   | { type: 'GraphTagResults'; tags: GraphTagMatch[] }
   | { type: 'GetState' }
