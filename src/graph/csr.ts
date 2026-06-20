@@ -1,3 +1,4 @@
+import { hubFrequency, rowOutFraction } from './outgoingOrder';
 import type { GraphNode, GraphSnapshot } from './types';
 import { NodeKind } from './types';
 
@@ -7,15 +8,12 @@ export interface CSRGraph {
   offsets: number[];
   neighbors: number[];
   edgeWeights: number[];
+  rowOutFractions: Float64Array;
   workIndices: number[];
   tagIndices: number[];
   authorIndices: number[];
   indexByNodeId: Map<number, number>;
   nodeByIndex: GraphNode[];
-}
-
-function hubFrequency(node: GraphNode): number {
-  return node.calibratedFreq ?? node.estimatedFreq ?? 1;
 }
 
 export function tagWeight(freq: number): number {
@@ -91,9 +89,12 @@ export function buildCSR(snapshot: GraphSnapshot): CSRGraph {
     offsets.push(neighbors.length);
   }
 
-  normalizeOutgoing(nodeIds.length, offsets, neighbors, edgeWeights);
-
   const nodeByIndex = nodeIds.map((id) => nodeById.get(id)!);
+  const rowOutFractions = new Float64Array(nodeIds.length);
+  for (let index = 0; index < nodeIds.length; index++) {
+    const outDegree = offsets[index + 1] - offsets[index];
+    rowOutFractions[index] = rowOutFraction(nodeByIndex[index], outDegree);
+  }
   const workIndices: number[] = [];
   const tagIndices: number[] = [];
   const authorIndices: number[] = [];
@@ -109,28 +110,13 @@ export function buildCSR(snapshot: GraphSnapshot): CSRGraph {
     offsets,
     neighbors,
     edgeWeights,
+    rowOutFractions,
     workIndices,
     tagIndices,
     authorIndices,
     indexByNodeId,
     nodeByIndex,
   };
-}
-
-function normalizeOutgoing(
-  nodeCount: number,
-  offsets: number[],
-  neighbors: number[],
-  edgeWeights: number[],
-): void {
-  for (let node = 0; node < nodeCount; node++) {
-    const start = offsets[node];
-    const end = offsets[node + 1];
-    let sum = 0;
-    for (let i = start; i < end; i++) sum += edgeWeights[i];
-    if (sum <= 0) continue;
-    for (let i = start; i < end; i++) edgeWeights[i] /= sum;
-  }
 }
 
 export function seedIndicesForWorks(csr: CSRGraph, seedWorkIds: string[]): number[] {

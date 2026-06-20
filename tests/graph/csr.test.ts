@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCSR, tagWeight } from '@/src/graph/csr';
+import { outgoingOrder, rowOutFraction } from '@/src/graph/outgoingOrder';
 import { NodeKind, type GraphSnapshot } from '@/src/graph/types';
 
 describe('tagWeight', () => {
@@ -9,8 +10,23 @@ describe('tagWeight', () => {
   });
 });
 
+describe('outgoingOrder', () => {
+  it('uses calibrated frequency when available', () => {
+    expect(
+      outgoingOrder({
+        id: 1,
+        kind: NodeKind.Tag,
+        key: 't',
+        estimatedFreq: 2,
+        calibratedFreq: 5000,
+        explored: false,
+      }),
+    ).toBe(5000);
+  });
+});
+
 describe('buildCSR', () => {
-  it('normalizes outgoing edge weights and weights rare tags higher', () => {
+  it('stores raw edge weights and scales frontier rows by outgoing order', () => {
     const snapshot: GraphSnapshot = {
       nodes: [
         { id: 1, kind: NodeKind.Work, key: '100', title: 'A', estimatedFreq: 1, calibratedFreq: null, explored: true },
@@ -41,13 +57,10 @@ describe('buildCSR', () => {
     }
 
     expect(rareWeight).toBeGreaterThan(popularWeight);
-
-    for (let node = 0; node < csr.nodeCount; node++) {
-      const s = csr.offsets[node];
-      const t = csr.offsets[node + 1];
-      if (t === s) continue;
-      const sum = csr.edgeWeights.slice(s, t).reduce((a, b) => a + b, 0);
-      expect(sum).toBeCloseTo(1, 6);
-    }
+    expect(csr.rowOutFractions[workIndex]).toBe(1);
+    expect(csr.rowOutFractions[popularIndex]).toBeCloseTo(1 / 5000, 6);
+    expect(csr.rowOutFractions[rareIndex]).toBe(
+      rowOutFraction(csr.nodeByIndex[rareIndex], csr.offsets[rareIndex + 1] - csr.offsets[rareIndex]),
+    );
   });
 });

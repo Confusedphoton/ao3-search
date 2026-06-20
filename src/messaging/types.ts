@@ -36,6 +36,7 @@ export interface PropagationInputPayload {
   offsets: number[];
   neighbors: number[];
   edgeWeights: number[];
+  rowOutFractions?: number[];
   seedIndices: number[];
   negativeSeedIndices?: number[];
   negativeWeight?: number;
@@ -56,6 +57,7 @@ export interface PPRInputPayload {
   offsets: number[];
   neighbors: number[];
   edgeWeights: number[];
+  rowOutFractions?: number[];
   seedIndices: number[];
   negativeSeedIndices?: number[];
   negativeWeight?: number;

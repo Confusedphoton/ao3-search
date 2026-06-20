@@ -18,7 +18,8 @@ export type { PropagationGraph, PropagationParams, PropagationResult, SeedContex
 export { runPropagation } from './engine';
 export { spreadMass } from './spread';
 export { buildPropagationGraph, buildPropagationGraphFromArrays } from './queryGraph';
-export { applyPageRankStep, pageRankUpdateRule } from './rules/pageRankStep';
+export { applyPageRankStep, l1Normalize, pageRankUpdateRule } from './rules/pageRankStep';
+export { buildTransitionWeights } from './queryGraph';
 export {
   RANK_SIGNAL_ID,
   buildRankTeleport,
@@ -37,6 +38,7 @@ export interface RankPropagationInput {
   offsets: number[];
   neighbors: number[];
   edgeWeights: number[];
+  rowOutFractions?: number[] | Float64Array;
   seedIndices: number[];
   negativeSeedIndices?: number[];
   negativeWeight?: number;
@@ -72,6 +74,7 @@ export function runRankPropagation(input: RankPropagationInput): RankPropagation
     offsets,
     neighbors,
     edgeWeights,
+    rowOutFractions,
     seedIndices,
     negativeSeedIndices = [],
     negativeWeight = NEGATIVE_SEED_WEIGHT,
@@ -92,6 +95,7 @@ export function runRankPropagation(input: RankPropagationInput): RankPropagation
     neighbors,
     edgeWeights,
     negativeSeedIndices,
+    rowOutFractions,
   );
   const context = createRankSeedContext(
     nodeCount,
@@ -120,6 +124,7 @@ export function runMultiSignalPropagation(
     offsets,
     neighbors,
     edgeWeights,
+    rowOutFractions,
     seedIndices,
     negativeSeedIndices = [],
     negativeWeight = NEGATIVE_SEED_WEIGHT,
@@ -148,6 +153,7 @@ export function runMultiSignalPropagation(
     neighbors,
     edgeWeights,
     negativeSeedIndices,
+    rowOutFractions,
   );
   const context = createRankSeedContext(
     nodeCount,
