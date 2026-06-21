@@ -5,6 +5,7 @@ import type {
   GraphEdge,
   GraphNode,
   GraphSnapshot,
+  ListedWorkInput,
   TagMergeInput,
   WorkMergeInput,
 } from '../graph/types';
@@ -256,11 +257,7 @@ export async function mergeTagPage(input: TagMergeInput): Promise<GraphNode> {
   });
 
   for (const work of input.works) {
-    const workNode = await upsertNode(NodeKind.Work, work.workId, {
-      title: work.title,
-      explored: false,
-    });
-    await addEdge(workNode.id, tagNode.id);
+    await mergeListedWork(work, { kind: 'tag', tagNodeId: tagNode.id });
   }
 
   return tagNode;
@@ -274,15 +271,47 @@ export async function mergeAuthorPage(input: AuthorMergeInput): Promise<GraphNod
   });
 
   for (const work of input.works) {
-    const workNode = await upsertNode(NodeKind.Work, work.workId, {
-      title: work.title,
-      explored: false,
-    });
-    await addAuthorEdge(workNode.id, authorNode.id);
+    await mergeListedWork(work, { kind: 'author', authorNodeId: authorNode.id });
     await incrementAuthorEstimate(authorNode.id);
   }
 
   return authorNode;
+}
+
+/** Merge a work discovered from a tag or author listing blurb (partial data, not explored). */
+async function mergeListedWork(
+  work: ListedWorkInput,
+  hub:
+    | { kind: 'tag'; tagNodeId: number }
+    | { kind: 'author'; authorNodeId: number },
+): Promise<GraphNode> {
+  const workNode = await upsertNode(NodeKind.Work, work.workId, {
+    title: work.title,
+    explored: false,
+  });
+
+  if (hub.kind === 'tag') {
+    await addEdge(workNode.id, hub.tagNodeId);
+  } else {
+    await addAuthorEdge(workNode.id, hub.authorNodeId);
+  }
+
+  for (const tagName of work.tags ?? []) {
+    const tagNode = await upsertNode(NodeKind.Tag, tagName, {
+      estimatedFreq: 1,
+    });
+    await addEdge(workNode.id, tagNode.id);
+  }
+
+  for (const author of work.authors ?? []) {
+    const authorNode = await upsertNode(NodeKind.Author, author.key, {
+      title: author.displayName,
+      estimatedFreq: 1,
+    });
+    await addAuthorEdge(workNode.id, authorNode.id);
+  }
+
+  return workNode;
 }
 
 export async function markNodeExplored(nodeId: number): Promise<void> {
@@ -334,6 +363,116 @@ export async function loadGraphSnapshot(): Promise<GraphSnapshot> {
   });
 }
 
+export async function getNextNodeId(): Promise<number> {
+  return getMeta('nextNodeId', 0);
+}
+
+async function putGraphNode(node: GraphNode): Promise<void> {
+  await tx('nodes', 'readwrite', async (transaction) => {
+    transaction.objectStore('nodes').put(node);
+  });
+}
+
+async function putKeyIndexRecord(kind: NodeKind, key: string, nodeId: number): Promise<void> {
+  await tx('keyIndex', 'readwrite', async (transaction) => {
+    transaction.objectStore('keyIndex').put({
+      compoundKey: compoundKey(kind, key),
+      nodeId,
+    } satisfies KeyIndexRecord);
+  });
+}
+
+async function putGraphEdge(workNodeId: number, tagNodeId: number): Promise<void> {
+  await addEdge(workNodeId, tagNodeId);
+}
+
+async function putGraphAuthorEdge(workNodeId: number, authorNodeId: number): Promise<void> {
+  await addAuthorEdge(workNodeId, authorNodeId);
+}
+
+function mergeImportedNodeFields(existing: GraphNode, imported: GraphNode): GraphNode {
+  const title =
+    existing.kind === NodeKind.Work
+      ? mergeWorkTitle(existing.key, existing.title, imported.title)
+      : imported.title ?? existing.title;
+
+  const calibratedFreq =
+    existing.calibratedFreq == null
+      ? imported.calibratedFreq
+      : imported.calibratedFreq == null
+        ? existing.calibratedFreq
+        : Math.max(existing.calibratedFreq, imported.calibratedFreq);
+
+  return {
+    ...existing,
+    title,
+    estimatedFreq: Math.max(existing.estimatedFreq, imported.estimatedFreq),
+    calibratedFreq,
+    explored: existing.explored || imported.explored,
+  };
+}
+
+export async function importGraphOverwrite(data: GraphSnapshot & { nextNodeId: number }): Promise<void> {
+  await clearGraph();
+  await tx(['meta', 'nodes', 'keyIndex', 'edges', 'authorEdges'], 'readwrite', async (transaction) => {
+    transaction.objectStore('meta').put({ key: 'nextNodeId', value: data.nextNodeId } satisfies MetaRecord);
+
+    for (const node of data.nodes) {
+      transaction.objectStore('nodes').put(node);
+      transaction.objectStore('keyIndex').put({
+        compoundKey: compoundKey(node.kind, node.key),
+        nodeId: node.id,
+      } satisfies KeyIndexRecord);
+    }
+    for (const edge of data.edges) {
+      transaction.objectStore('edges').put(edge);
+    }
+    for (const edge of data.authorEdges) {
+      transaction.objectStore('authorEdges').put(edge);
+    }
+  });
+}
+
+export async function importGraphMerge(data: GraphSnapshot): Promise<void> {
+  const idMap = new Map<number, number>();
+
+  for (const imported of data.nodes) {
+    const existing = await getNodeByKey(imported.kind, imported.key);
+    if (existing) {
+      const merged = mergeImportedNodeFields(existing, imported);
+      await putGraphNode(merged);
+      idMap.set(imported.id, existing.id);
+      continue;
+    }
+
+    const id = await allocateNodeIds(1);
+    const node: GraphNode = { ...imported, id };
+    await putGraphNode(node);
+    await putKeyIndexRecord(node.kind, node.key, node.id);
+    idMap.set(imported.id, id);
+  }
+
+  for (const edge of data.edges) {
+    const workNodeId = idMap.get(edge.workNodeId);
+    const tagNodeId = idMap.get(edge.tagNodeId);
+    if (workNodeId == null || tagNodeId == null) continue;
+    await putGraphEdge(workNodeId, tagNodeId);
+  }
+
+  for (const edge of data.authorEdges) {
+    const workNodeId = idMap.get(edge.workNodeId);
+    const authorNodeId = idMap.get(edge.authorNodeId);
+    if (workNodeId == null || authorNodeId == null) continue;
+    await putGraphAuthorEdge(workNodeId, authorNodeId);
+  }
+
+  const currentNext = await getNextNodeId();
+  const importedMax = data.nodes.reduce((max, node) => Math.max(max, node.id), -1);
+  if (importedMax + 1 > currentNext) {
+    await setMeta('nextNodeId', importedMax + 1);
+  }
+}
+
 export async function clearGraph(): Promise<void> {
   await tx(['meta', 'nodes', 'keyIndex', 'edges', 'authorEdges'], 'readwrite', async (transaction) => {
     transaction.objectStore('meta').clear();
@@ -346,6 +485,14 @@ export async function clearGraph(): Promise<void> {
 
 /** Test helper — reset module-level DB handle after deleting database. */
 export function resetDbForTests(): void {
+  dbPromise = null;
+}
+
+/** Test helper — close open connection before deleting the database. */
+export async function closeDbForTests(): Promise<void> {
+  if (!dbPromise) return;
+  const db = await dbPromise;
+  db.close();
   dbPromise = null;
 }
 

@@ -220,3 +220,32 @@ li.empty {
   text-transform: uppercase;
   vertical-align: middle;
 }
+
+.graph-section .graph-status {
+  margin-top: 6px;
+}
+
+.import-prompt {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.import-prompt-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+button.danger {
+  border-color: #600;
+  color: #600;
+}

@@ -21,4 +21,6 @@ export const NEGATIVE_SEED_WEIGHT = 1;
 export const DB_NAME = 'ao3-search';
 export const DB_VERSION = 2;
 
+export const GRAPH_EXPORT_VERSION = 1;
+
 export const AO3_ORIGIN = 'https://archiveofourown.org';

@@ -1,4 +1,5 @@
 import type { PageData } from '../ao3/types';
+import type { GraphExport, GraphImportMode, GraphStats } from '../graph/types';
 
 export type PositiveSeed =
   | { kind: 'work'; workId: string; title: string; url: string }
@@ -102,6 +103,17 @@ export type ExtensionMessage =
     }
   | { type: 'StartSearch' }
   | { type: 'CancelSearch' }
+  | { type: 'ExportGraph' }
+  | { type: 'GraphExported'; export: GraphExport }
+  | { type: 'ImportGraph'; export: GraphExport; mode: GraphImportMode }
+  | {
+      type: 'GraphImportResult';
+      success: boolean;
+      message: string;
+      stats: GraphStats | null;
+    }
+  | { type: 'GetGraphStats' }
+  | { type: 'GraphStats'; stats: GraphStats }
   | { type: 'SearchProgress'; payload: SearchProgressPayload }
   | { type: 'SearchResults'; payload: SearchResultsPayload };
 

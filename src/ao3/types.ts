@@ -2,9 +2,16 @@ import { AO3_ORIGIN } from '../config/constants';
 
 export type PageKind = 'work' | 'tag' | 'author' | 'unknown';
 
+export interface ListedWorkAuthor {
+  key: string;
+  displayName: string;
+}
+
 export interface ListedWork {
   workId: string;
   title: string;
+  tags: string[];
+  authors: ListedWorkAuthor[];
 }
 
 export interface WorkPageData {

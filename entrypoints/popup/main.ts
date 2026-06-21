@@ -7,10 +7,13 @@ import type {
   SearchProgressPayload,
   SearchResultItem,
 } from '@/src/messaging/types';
+import type { GraphExport, GraphStats } from '@/src/graph/types';
+import { NodeKind } from '@/src/graph/types';
 import { isExtensionMessage } from '@/src/messaging/types';
 import { sendMessage } from '@/src/messaging/protocol';
 import { authorWorksUrl, tagWorksUrl } from '@/src/ao3/types';
 import { MAX_NEGATIVE_SEEDS, MAX_SEEDS, MIN_SEEDS } from '@/src/config/constants';
+import { parseGraphExport } from '@/src/storage/graphIo';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
@@ -23,6 +26,10 @@ let tagSuggestions: GraphTagMatch[] = [];
 let tagSearchQuery = '';
 let statusHint = '';
 let tagSearchTimer: ReturnType<typeof setTimeout> | null = null;
+let graphStats: GraphStats | null = null;
+let graphMessage = '';
+let pendingImport: GraphExport | null = null;
+let pendingImportFileName = '';
 
 function positiveSeedLabel(seed: PositiveSeed): string {
   if (seed.kind === 'work') return seed.title;
@@ -72,6 +79,24 @@ function formatSearchStatus(progress: SearchProgressPayload): string {
     parts.push(`${progress.frontierSize} to explore`);
   }
   return parts.join(' · ');
+}
+
+function formatGraphStats(stats: GraphStats): string {
+  return `${stats.workCount.toLocaleString()} works · ${stats.tagCount.toLocaleString()} tags · ${stats.authorCount.toLocaleString()} authors`;
+}
+
+function renderImportPrompt(): string {
+  if (!pendingImport) return '';
+  return `
+    <div class="import-prompt" role="dialog" aria-labelledby="import-prompt-title">
+      <p id="import-prompt-title" class="import-prompt-title">Import <strong>${escapeHtml(pendingImportFileName)}</strong>?</p>
+      <p class="hint">Choose how to apply this graph file.</p>
+      <div class="import-actions">
+        <button id="import-merge" type="button" ${searching ? 'disabled' : ''}>Merge</button>
+        <button id="import-overwrite" type="button" class="danger" ${searching ? 'disabled' : ''}>Replace</button>
+        <button id="import-cancel" type="button">Cancel</button>
+      </div>
+    </div>`;
 }
 
 function render(): void {
@@ -197,6 +222,26 @@ function render(): void {
         }
       </ol>
     </section>
+
+    <section class="graph-section">
+      <div class="section-header">
+        <h2>Your graph</h2>
+        <div class="actions">
+          <button id="export-graph" type="button" ${searching ? 'disabled' : ''}>Export</button>
+          <button id="import-graph" type="button" ${searching ? 'disabled' : ''}>Import</button>
+        </div>
+      </div>
+      <p class="hint">
+        ${
+          graphStats
+            ? formatGraphStats(graphStats)
+            : 'Works, tags, and authors collected while browsing AO3.'
+        }
+      </p>
+      ${graphMessage ? `<p class="status graph-status">${escapeHtml(graphMessage)}</p>` : ''}
+      <input id="import-graph-input" type="file" accept="application/json,.json" hidden />
+      ${renderImportPrompt()}
+    </section>
   `;
 
   bindEvents();
@@ -313,6 +358,115 @@ function bindEvents(): void {
       }
     });
   });
+
+  document.querySelector('#export-graph')?.addEventListener('click', () => {
+    void exportCurrentGraph();
+  });
+
+  document.querySelector('#import-graph')?.addEventListener('click', () => {
+    document.querySelector<HTMLInputElement>('#import-graph-input')?.click();
+  });
+
+  document.querySelector('#import-graph-input')?.addEventListener('change', (event) => {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    void loadImportFile(file);
+  });
+
+  document.querySelector('#import-merge')?.addEventListener('click', () => {
+    void confirmImport('merge');
+  });
+
+  document.querySelector('#import-overwrite')?.addEventListener('click', () => {
+    void confirmImport('overwrite');
+  });
+
+  document.querySelector('#import-cancel')?.addEventListener('click', () => {
+    pendingImport = null;
+    pendingImportFileName = '';
+    render();
+  });
+}
+
+async function refreshGraphStats(): Promise<void> {
+  const response = await sendMessage({ type: 'GetGraphStats' });
+  if (response?.type === 'GraphStats') {
+    graphStats = response.stats;
+  }
+}
+
+async function exportCurrentGraph(): Promise<void> {
+  graphMessage = '';
+  const response = await sendMessage({ type: 'ExportGraph' });
+  if (response?.type === 'GraphExported') {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([JSON.stringify(response.export, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ao3-search-graph-${stamp}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    graphMessage = `Exported ${response.export.nodes.length.toLocaleString()} nodes.`;
+    graphStats = {
+      nodeCount: response.export.nodes.length,
+      workCount: response.export.nodes.filter((node) => node.kind === NodeKind.Work).length,
+      tagCount: response.export.nodes.filter((node) => node.kind === NodeKind.Tag).length,
+      authorCount: response.export.nodes.filter((node) => node.kind === NodeKind.Author).length,
+      edgeCount: response.export.edges.length,
+      authorEdgeCount: response.export.authorEdges.length,
+    };
+    render();
+    return;
+  }
+  if (response?.type === 'GraphImportResult' && !response.success) {
+    graphMessage = response.message;
+    render();
+  }
+}
+
+async function loadImportFile(file: File): Promise<void> {
+  graphMessage = '';
+  try {
+    const text = await file.text();
+    const parsedJson = JSON.parse(text) as unknown;
+    const exportData = parseGraphExport(parsedJson);
+    if (!exportData) {
+      graphMessage = 'Invalid graph file.';
+      pendingImport = null;
+      pendingImportFileName = '';
+      render();
+      return;
+    }
+    pendingImport = exportData;
+    pendingImportFileName = file.name;
+    render();
+  } catch {
+    graphMessage = 'Could not read graph file.';
+    pendingImport = null;
+    pendingImportFileName = '';
+    render();
+  }
+}
+
+async function confirmImport(mode: 'merge' | 'overwrite'): Promise<void> {
+  if (!pendingImport) return;
+  const exportData = pendingImport;
+  pendingImport = null;
+  pendingImportFileName = '';
+  graphMessage = mode === 'overwrite' ? 'Replacing graph…' : 'Merging graph…';
+  render();
+
+  const response = await sendMessage({ type: 'ImportGraph', export: exportData, mode });
+  if (response?.type === 'GraphImportResult') {
+    graphMessage = response.message;
+    if (response.stats) graphStats = response.stats;
+    render();
+  }
 }
 
 async function dispatch(message: ExtensionMessage): Promise<number> {
@@ -374,6 +528,13 @@ function applyState(message: ExtensionMessage): void {
     render();
   } else if (message.type === 'GraphTagResults') {
     tagSuggestions = message.tags;
+    render();
+  } else if (message.type === 'GraphStats') {
+    graphStats = message.stats;
+    render();
+  } else if (message.type === 'GraphImportResult') {
+    graphMessage = message.message;
+    if (message.stats) graphStats = message.stats;
     render();
   }
 }
@@ -443,6 +604,8 @@ async function loadInitialState(): Promise<void> {
     const response = await sendMessage({ type: 'GetState' });
     if (response?.type === 'StateUpdate') {
       applyState(response);
+      await refreshGraphStats();
+      render();
       return;
     }
   } catch {
@@ -473,6 +636,7 @@ async function loadInitialState(): Promise<void> {
     progress = stored.lastProgress as SearchProgressPayload;
   }
 
+  await refreshGraphStats();
   render();
 }
 

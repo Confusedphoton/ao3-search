@@ -30,6 +30,26 @@ export interface GraphSnapshot {
   authorEdges: AuthorWorkEdge[];
 }
 
+export interface GraphExport {
+  version: number;
+  exportedAt: string;
+  nextNodeId: number;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  authorEdges: AuthorWorkEdge[];
+}
+
+export type GraphImportMode = 'merge' | 'overwrite';
+
+export interface GraphStats {
+  nodeCount: number;
+  workCount: number;
+  tagCount: number;
+  authorCount: number;
+  edgeCount: number;
+  authorEdgeCount: number;
+}
+
 export interface WorkAuthorInput {
   key: string;
   displayName: string;
@@ -46,6 +66,8 @@ export interface WorkMergeInput {
 export interface ListedWorkInput {
   workId: string;
   title: string;
+  tags?: string[];
+  authors?: WorkAuthorInput[];
 }
 
 export interface TagMergeInput {

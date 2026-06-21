@@ -5,7 +5,10 @@ export const selectors = {
   workTitle: 'h2.title.heading, h2.title, h1.title, #workskin h2.title.heading',
   tagHeading: 'h2.heading',
   authorHeading: 'h2.heading',
-  workListing: 'ol.work.index.group li.work.blurb h4.heading a, ol.work.index.group li.work.blurb h3.title a',
+  workBlurb: 'ol.work.index.group li.work.blurb',
+  workBlurbTitle: 'h4.heading a[href*="/works/"], h3.title a[href*="/works/"]',
+  workBlurbAuthors: 'h4.heading a[href*="/users/"]',
+  workBlurbTags: 'h5.fandoms.heading a.tag, ul.tags.commas a.tag',
 } as const;
 
 export const tagCountPattern = /([\d,]+)\s+Works?/i;

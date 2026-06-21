@@ -10,6 +10,7 @@ import type {
 } from '@/src/messaging/types';
 import { MAX_NEGATIVE_SEEDS, MAX_SEEDS } from '@/src/config/constants';
 import { mergeAuthorPage, mergeTagPage, mergeWorkPage, searchTagNodes } from '@/src/storage/db';
+import { exportGraph, getGraphStats, importGraph, parseGraphExport } from '@/src/storage/graphIo';
 import { broadcast, onMessage } from '@/src/messaging/protocol';
 import { SearchOrchestrator } from '@/src/search/orchestrator';
 
@@ -451,6 +452,51 @@ onMessage(async (message, sender) => {
 
     case 'SearchGraphTags':
       return searchGraphTags(message.query);
+
+    case 'GetGraphStats':
+      return { type: 'GraphStats', stats: await getGraphStats() };
+
+    case 'ExportGraph':
+      if (searching) {
+        return {
+          type: 'GraphImportResult',
+          success: false,
+          message: 'Cannot export while a search is running.',
+          stats: null,
+        };
+      }
+      return { type: 'GraphExported', export: await exportGraph() };
+
+    case 'ImportGraph':
+      if (searching) {
+        return {
+          type: 'GraphImportResult',
+          success: false,
+          message: 'Cannot import while a search is running.',
+          stats: null,
+        };
+      }
+      {
+        const parsed = parseGraphExport(message.export);
+        if (!parsed) {
+          return {
+            type: 'GraphImportResult',
+            success: false,
+            message: 'Invalid graph file.',
+            stats: null,
+          };
+        }
+        const stats = await importGraph(parsed, message.mode);
+        return {
+          type: 'GraphImportResult',
+          success: true,
+          message:
+            message.mode === 'overwrite'
+              ? `Replaced graph with ${stats.nodeCount.toLocaleString()} nodes.`
+              : `Merged graph — now ${stats.nodeCount.toLocaleString()} nodes.`,
+          stats,
+        };
+      }
 
     case 'AddNegativeWorkFromTab':
       return addNegativeWorkFromTab(sender);

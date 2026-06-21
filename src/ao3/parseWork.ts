@@ -1,12 +1,15 @@
 import { selectors } from './selectors';
-import type { WorkPageData } from './types';
+import type { ListedWorkAuthor, WorkPageData } from './types';
 import { parseAuthorKeyFromHref, parseWorkIdFromUrl, workUrl } from './types';
 
-export function parseAuthorsFromDocument(doc: Document): Array<{ key: string; displayName: string }> {
-  const authors: Array<{ key: string; displayName: string }> = [];
+export function parseAuthorsFromElement(
+  root: ParentNode,
+  authorLinkSelector: string,
+): ListedWorkAuthor[] {
+  const authors: ListedWorkAuthor[] = [];
   const seen = new Set<string>();
 
-  for (const link of doc.querySelectorAll(selectors.workAuthors)) {
+  for (const link of root.querySelectorAll(authorLinkSelector)) {
     const href = link.getAttribute('href');
     if (!href) continue;
     const key = parseAuthorKeyFromHref(href);
@@ -19,6 +22,10 @@ export function parseAuthorsFromDocument(doc: Document): Array<{ key: string; di
   }
 
   return authors;
+}
+
+export function parseAuthorsFromDocument(doc: Document): ListedWorkAuthor[] {
+  return parseAuthorsFromElement(doc, selectors.workAuthors);
 }
 
 export function parseWorkPage(doc: Document, url: string): WorkPageData | null {
