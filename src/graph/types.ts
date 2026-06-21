@@ -50,6 +50,34 @@ export interface GraphStats {
   authorEdgeCount: number;
 }
 
+export interface StatsTagRecord {
+  tagId: number;
+  name: string;
+  type: string;
+  canonical: boolean;
+  cachedCount: number;
+  mergerId: number | null;
+}
+
+export interface StatsImportProgress {
+  phase: 'tags' | 'works' | 'done' | 'error';
+  rowsProcessed: number;
+  tagsStored: number;
+  tagsCalibrated: number;
+  tagsMerged: number;
+  worksMatched: number;
+  edgesAdded: number;
+  message?: string;
+}
+
+export interface StatsImportResult {
+  tagsStored: number;
+  tagsCalibrated: number;
+  tagsMerged: number;
+  worksMatched: number;
+  edgesAdded: number;
+}
+
 export interface WorkAuthorInput {
   key: string;
   displayName: string;

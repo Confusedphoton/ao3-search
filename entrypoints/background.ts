@@ -11,7 +11,9 @@ import type {
 import { MAX_NEGATIVE_SEEDS, MAX_SEEDS } from '@/src/config/constants';
 import { mergeAuthorPage, mergeTagPage, mergeWorkPage, searchTagNodes } from '@/src/storage/db';
 import { exportGraph, getGraphStats, importGraph, parseGraphExport } from '@/src/storage/graphIo';
+import { resolveGraphTagName } from '@/src/storage/tagCanonical';
 import { broadcast, onMessage } from '@/src/messaging/protocol';
+import { registerStatsImportPort } from '@/src/messaging/statsImportPort';
 import { SearchOrchestrator } from '@/src/search/orchestrator';
 
 const seeds: PositiveSeed[] = [];
@@ -270,14 +272,15 @@ async function addSeedFromTab(sender: Browser.runtime.MessageSender): Promise<Ex
   }
 
   if (info.tagName) {
-    if (isPositiveTagSeed(info.tagName) || isNegativeTagSeed(info.tagName)) {
+    const tagName = await resolveGraphTagName(info.tagName);
+    if (isPositiveTagSeed(tagName) || isNegativeTagSeed(tagName)) {
       return stateUpdate(searching);
     }
     if (seeds.length >= MAX_SEEDS) return stateUpdate(searching);
 
     seeds.push({
       kind: 'tag',
-      tagName: info.tagName,
+      tagName,
       url: info.url,
     });
     await persistUiState();
@@ -305,7 +308,7 @@ async function addSeedFromTab(sender: Browser.runtime.MessageSender): Promise<Ex
 }
 
 async function addSeedTag(tagName: string): Promise<ExtensionMessage> {
-  const trimmed = tagName.trim();
+  const trimmed = (await resolveGraphTagName(tagName)).trim();
   if (!trimmed || isPositiveTagSeed(trimmed) || isNegativeTagSeed(trimmed)) {
     return stateUpdate(searching);
   }
@@ -345,14 +348,15 @@ async function addNegativeWorkFromTab(sender: Browser.runtime.MessageSender): Pr
   }
 
   if (info.tagName) {
-    if (isPositiveTagSeed(info.tagName) || isNegativeTagSeed(info.tagName)) {
+    const tagName = await resolveGraphTagName(info.tagName);
+    if (isPositiveTagSeed(tagName) || isNegativeTagSeed(tagName)) {
       return stateUpdate(searching);
     }
     if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) return stateUpdate(searching);
 
     negativeSeeds.push({
       kind: 'tag',
-      tagName: info.tagName,
+      tagName,
       url: info.url,
     });
     await persistUiState();
@@ -386,7 +390,8 @@ async function addNegativeTagFromTab(sender: Browser.runtime.MessageSender): Pro
   const info = await readTabPageInfo(tabId);
   if (!info.tagName) return stateUpdate(searching);
 
-  if (isPositiveTagSeed(info.tagName) || isNegativeTagSeed(info.tagName)) {
+  const tagName = await resolveGraphTagName(info.tagName);
+  if (isPositiveTagSeed(tagName) || isNegativeTagSeed(tagName)) {
     return stateUpdate(searching);
   }
 
@@ -396,7 +401,7 @@ async function addNegativeTagFromTab(sender: Browser.runtime.MessageSender): Pro
 
   negativeSeeds.push({
     kind: 'tag',
-    tagName: info.tagName,
+    tagName,
     url: info.url,
   });
   await persistUiState();
@@ -405,7 +410,7 @@ async function addNegativeTagFromTab(sender: Browser.runtime.MessageSender): Pro
 }
 
 async function addNegativeTag(tagName: string): Promise<ExtensionMessage> {
-  const trimmed = tagName.trim();
+  const trimmed = (await resolveGraphTagName(tagName)).trim();
   if (!trimmed || isNegativeTagSeed(trimmed) || isPositiveTagSeed(trimmed)) {
     return stateUpdate(searching);
   }
@@ -598,5 +603,6 @@ async function runSearch(search: SearchOrchestrator): Promise<void> {
 
 export default defineBackground(() => {
   ready = loadPersistedState();
+  registerStatsImportPort(() => searching);
   void ready.then(() => console.log('[ao3-search] background ready'));
 });

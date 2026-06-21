@@ -6,14 +6,21 @@ import type {
   GraphNode,
   GraphSnapshot,
   ListedWorkInput,
+  StatsTagRecord,
   TagMergeInput,
   WorkMergeInput,
 } from '../graph/types';
 import { NodeKind } from '../graph/types';
+import { resolveCanonicalStatsTag } from './statsTagLookup';
 
 interface MetaRecord {
   key: string;
   value: number;
+}
+
+interface StatsTagNameIndex {
+  name: string;
+  tagId: number;
 }
 
 interface KeyIndexRecord {
@@ -60,6 +67,14 @@ function openDb(): Promise<IDBDatabase> {
         });
         store.createIndex('byWork', 'workNodeId', { unique: false });
         store.createIndex('byAuthor', 'authorNodeId', { unique: false });
+      }
+
+      if (oldVersion < 3 && !db.objectStoreNames.contains('statsTags')) {
+        db.createObjectStore('statsTags', { keyPath: 'tagId' });
+      }
+
+      if (oldVersion < 4 && !db.objectStoreNames.contains('statsTagNames')) {
+        db.createObjectStore('statsTagNames', { keyPath: 'name' });
       }
     };
 
@@ -141,13 +156,14 @@ async function upsertNode(
   key: string,
   patch: Partial<Omit<GraphNode, 'id' | 'kind' | 'key'>>,
 ): Promise<GraphNode> {
-  const existing = await getNodeByKey(kind, key);
+  const resolvedKey = kind === NodeKind.Tag ? await resolveGraphTagName(key) : key;
+  const existing = await getNodeByKey(kind, resolvedKey);
   if (existing) {
     const title =
       kind === NodeKind.Work
         ? mergeWorkTitle(key, existing.title, patch.title)
         : patch.title ?? existing.title;
-    const updated: GraphNode = { ...existing, ...patch, title, kind, key };
+    const updated: GraphNode = { ...existing, ...patch, title, kind, key: resolvedKey };
     await tx(['nodes'], 'readwrite', async (transaction) => {
       transaction.objectStore('nodes').put(updated);
     });
@@ -158,7 +174,7 @@ async function upsertNode(
   const node: GraphNode = {
     id,
     kind,
-    key,
+    key: resolvedKey,
     title: patch.title,
     estimatedFreq: patch.estimatedFreq ?? 1,
     calibratedFreq: patch.calibratedFreq ?? null,
@@ -168,7 +184,7 @@ async function upsertNode(
   await tx(['nodes', 'keyIndex'], 'readwrite', async (transaction) => {
     transaction.objectStore('nodes').put(node);
     transaction.objectStore('keyIndex').put({
-      compoundKey: compoundKey(kind, key),
+      compoundKey: compoundKey(kind, resolvedKey),
       nodeId: id,
     } satisfies KeyIndexRecord);
   });
@@ -176,7 +192,7 @@ async function upsertNode(
   return node;
 }
 
-async function addEdge(workNodeId: number, tagNodeId: number): Promise<void> {
+export async function addEdge(workNodeId: number, tagNodeId: number): Promise<void> {
   await tx('edges', 'readwrite', async (transaction) => {
     transaction.objectStore('edges').put({ workNodeId, tagNodeId } satisfies GraphEdge);
   });
@@ -480,6 +496,222 @@ export async function clearGraph(): Promise<void> {
     transaction.objectStore('keyIndex').clear();
     transaction.objectStore('edges').clear();
     transaction.objectStore('authorEdges').clear();
+  });
+}
+
+export async function clearStatsMetadata(): Promise<void> {
+  await tx(['statsTags', 'statsTagNames'], 'readwrite', async (transaction) => {
+    transaction.objectStore('statsTags').clear();
+    transaction.objectStore('statsTagNames').clear();
+  });
+}
+
+export async function getGraphTagNameToNodeId(): Promise<Map<string, number>> {
+  return tx('nodes', 'readonly', async (transaction) => {
+    const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
+    const map = new Map<string, number>();
+    for (const node of nodes) {
+      if (node.kind === NodeKind.Tag) {
+        map.set(node.key, node.id);
+      }
+    }
+    return map;
+  });
+}
+
+export async function getGraphWorkKeyToNodeId(): Promise<Map<string, number>> {
+  return tx('nodes', 'readonly', async (transaction) => {
+    const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
+    const map = new Map<string, number>();
+    for (const node of nodes) {
+      if (node.kind === NodeKind.Work) {
+        map.set(node.key, node.id);
+      }
+    }
+    return map;
+  });
+}
+
+export async function putStatsTagsBatch(records: StatsTagRecord[]): Promise<void> {
+  if (records.length === 0) return;
+  await tx(['statsTags', 'statsTagNames'], 'readwrite', async (transaction) => {
+    const tagStore = transaction.objectStore('statsTags');
+    const nameStore = transaction.objectStore('statsTagNames');
+    for (const record of records) {
+      tagStore.put(record);
+      if (record.name) {
+        nameStore.put({ name: record.name, tagId: record.tagId } satisfies StatsTagNameIndex);
+      }
+    }
+  });
+}
+
+export async function getStatsTag(tagId: number): Promise<StatsTagRecord | null> {
+  return tx('statsTags', 'readonly', async (transaction) => {
+    return idbGet<StatsTagRecord>(transaction.objectStore('statsTags'), tagId);
+  });
+}
+
+export async function getStatsTagByName(name: string): Promise<StatsTagRecord | null> {
+  return tx(['statsTagNames', 'statsTags'], 'readonly', async (transaction) => {
+    const indexRecord = await idbGet<StatsTagNameIndex>(transaction.objectStore('statsTagNames'), name);
+    if (!indexRecord) return null;
+    return idbGet<StatsTagRecord>(transaction.objectStore('statsTags'), indexRecord.tagId);
+  });
+}
+
+export async function getAllGraphTagNodes(): Promise<GraphNode[]> {
+  return tx('nodes', 'readonly', async (transaction) => {
+    const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
+    return nodes.filter((node) => node.kind === NodeKind.Tag);
+  });
+}
+
+async function resolveGraphTagName(tagName: string): Promise<string> {
+  const trimmed = tagName.trim();
+  if (!trimmed) return tagName;
+
+  const statsTag = await getStatsTagByName(trimmed);
+  if (!statsTag) return trimmed;
+
+  const canonical = await resolveCanonicalStatsTag(statsTag, getStatsTag);
+  return canonical.name || trimmed;
+}
+
+function mergeTagNodeFields(target: GraphNode, source: GraphNode): GraphNode {
+  const calibratedFreq =
+    target.calibratedFreq == null
+      ? source.calibratedFreq
+      : source.calibratedFreq == null
+        ? target.calibratedFreq
+        : Math.max(target.calibratedFreq, source.calibratedFreq);
+
+  return {
+    ...target,
+    estimatedFreq: Math.max(target.estimatedFreq, source.estimatedFreq),
+    calibratedFreq,
+    explored: target.explored || source.explored,
+  };
+}
+
+export async function mergeTagGraphNodes(sourceId: number, targetId: number): Promise<void> {
+  if (sourceId === targetId) return;
+
+  await tx(['nodes', 'keyIndex', 'edges'], 'readwrite', async (transaction) => {
+    const nodeStore = transaction.objectStore('nodes');
+    const keyStore = transaction.objectStore('keyIndex');
+    const edgeStore = transaction.objectStore('edges');
+
+    const source = await idbGet<GraphNode>(nodeStore, sourceId);
+    const target = await idbGet<GraphNode>(nodeStore, targetId);
+    if (!source || source.kind !== NodeKind.Tag || !target || target.kind !== NodeKind.Tag) return;
+
+    nodeStore.put(mergeTagNodeFields(target, source));
+
+    const byTag = edgeStore.index('byTag');
+    const sourceEdges = await new Promise<GraphEdge[]>((resolve, reject) => {
+      const req = byTag.getAll(sourceId);
+      req.onsuccess = () => resolve((req.result as GraphEdge[]) ?? []);
+      req.onerror = () => reject(req.error);
+    });
+
+    for (const edge of sourceEdges) {
+      edgeStore.delete([edge.workNodeId, edge.tagNodeId]);
+      edgeStore.put({ workNodeId: edge.workNodeId, tagNodeId: targetId });
+    }
+
+    keyStore.delete(compoundKey(NodeKind.Tag, source.key));
+    nodeStore.delete(sourceId);
+  });
+}
+
+export async function renameTagGraphNode(nodeId: number, canonicalName: string): Promise<GraphNode> {
+  const node = await tx('nodes', 'readonly', async (transaction) => {
+    return idbGet<GraphNode>(transaction.objectStore('nodes'), nodeId);
+  });
+  if (!node || node.kind !== NodeKind.Tag) {
+    throw new Error(`Tag node ${nodeId} not found`);
+  }
+  if (node.key === canonicalName) return node;
+
+  const existingCanonical = await getNodeByKey(NodeKind.Tag, canonicalName);
+  if (existingCanonical) {
+    await mergeTagGraphNodes(nodeId, existingCanonical.id);
+    const merged = await getNodeByKey(NodeKind.Tag, canonicalName);
+    if (!merged) throw new Error(`Canonical tag node missing after merge: ${canonicalName}`);
+    return merged;
+  }
+
+  const updated: GraphNode = { ...node, key: canonicalName };
+  await tx(['nodes', 'keyIndex'], 'readwrite', async (transaction) => {
+    transaction.objectStore('nodes').put(updated);
+    transaction.objectStore('keyIndex').delete(compoundKey(NodeKind.Tag, node.key));
+    transaction.objectStore('keyIndex').put({
+      compoundKey: compoundKey(NodeKind.Tag, canonicalName),
+      nodeId,
+    } satisfies KeyIndexRecord);
+  });
+  return updated;
+}
+
+export async function canonicalizeGraphTagNode(
+  nodeId: number,
+  canonicalName: string,
+  cachedCount: number,
+): Promise<GraphNode> {
+  const canonicalNode = await renameTagGraphNode(nodeId, canonicalName);
+  const calibratedFreq =
+    canonicalNode.calibratedFreq == null
+      ? cachedCount
+      : Math.max(canonicalNode.calibratedFreq, cachedCount);
+  const updated = { ...canonicalNode, calibratedFreq };
+  await putGraphNode(updated);
+  return updated;
+}
+
+export async function countStatsTags(): Promise<number> {
+  return tx('statsTags', 'readonly', async (transaction) => {
+    return new Promise((resolve, reject) => {
+      const req = transaction.objectStore('statsTags').count();
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    });
+  });
+}
+
+export async function calibrateGraphTagNode(nodeId: number, cachedCount: number): Promise<void> {
+  await tx('nodes', 'readwrite', async (transaction) => {
+    const store = transaction.objectStore('nodes');
+    const node = await idbGet<GraphNode>(store, nodeId);
+    if (!node || node.kind !== NodeKind.Tag) return;
+    const calibratedFreq =
+      node.calibratedFreq == null ? cachedCount : Math.max(node.calibratedFreq, cachedCount);
+    store.put({ ...node, calibratedFreq });
+  });
+}
+
+export async function ensureTagNodeFromStats(tag: StatsTagRecord): Promise<GraphNode> {
+  const canonical = await resolveCanonicalStatsTag(tag, getStatsTag);
+  const tagName = canonical.name || tag.name;
+  if (!tagName) {
+    throw new Error(`Stats tag ${tag.tagId} has no resolvable name`);
+  }
+
+  const existing = await getNodeByKey(NodeKind.Tag, tagName);
+  if (existing) {
+    const calibratedFreq =
+      existing.calibratedFreq == null
+        ? canonical.cachedCount
+        : Math.max(existing.calibratedFreq, canonical.cachedCount);
+    const updated = { ...existing, calibratedFreq };
+    await putGraphNode(updated);
+    return updated;
+  }
+
+  return upsertNode(NodeKind.Tag, tagName, {
+    estimatedFreq: 1,
+    calibratedFreq: canonical.cachedCount,
+    explored: false,
   });
 }
 

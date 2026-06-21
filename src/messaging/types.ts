@@ -1,5 +1,5 @@
 import type { PageData } from '../ao3/types';
-import type { GraphExport, GraphImportMode, GraphStats } from '../graph/types';
+import type { GraphExport, GraphImportMode, GraphStats, StatsImportProgress } from '../graph/types';
 
 export type PositiveSeed =
   | { kind: 'work'; workId: string; title: string; url: string }
@@ -114,6 +114,7 @@ export type ExtensionMessage =
     }
   | { type: 'GetGraphStats' }
   | { type: 'GraphStats'; stats: GraphStats }
+  | { type: 'StatsImportProgress'; payload: StatsImportProgress }
   | { type: 'SearchProgress'; payload: SearchProgressPayload }
   | { type: 'SearchResults'; payload: SearchResultsPayload };
 

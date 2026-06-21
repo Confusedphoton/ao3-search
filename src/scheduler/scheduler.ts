@@ -19,6 +19,7 @@ import {
   mergeTagPage,
   mergeWorkPage,
 } from '../storage/db';
+import { resolveGraphTagName } from '../storage/tagCanonical';
 
 export interface FetchResult {
   html: string;
@@ -145,13 +146,14 @@ export class RequestScheduler {
   }
 
   private async ensureTagSeed(tagName: string): Promise<void> {
-    const existing = await getTagNode(tagName);
+    const canonicalName = await resolveGraphTagName(tagName);
+    const existing = await getTagNode(canonicalName);
     if (existing?.explored) return;
 
-    const url = tagWorksUrl(tagName);
+    const url = tagWorksUrl(canonicalName);
     const html = await this.fetchWithRetry(url);
     const parsed = parseTagPageFromHtml(html, url);
-    if (!parsed) throw new Error(`Failed to parse tag page ${tagName}`);
+    if (!parsed) throw new Error(`Failed to parse tag page ${canonicalName}`);
       await mergeTagPage({
         tagName: parsed.tagName,
         workCount: parsed.workCount,

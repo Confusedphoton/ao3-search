@@ -19,8 +19,16 @@ export const MAX_NEGATIVE_SEEDS = 10;
 export const NEGATIVE_SEED_WEIGHT = 1;
 
 export const DB_NAME = 'ao3-search';
-export const DB_VERSION = 2;
+export const DB_VERSION = 4;
 
 export const GRAPH_EXPORT_VERSION = 1;
+
+/** AO3 official stats dump tag types that are not semantic work tags. */
+export const STATS_SYSTEM_TAG_TYPES = new Set([
+  'Rating',
+  'Category',
+  'ArchiveWarning',
+  'Media',
+]);
 
 export const AO3_ORIGIN = 'https://archiveofourown.org';
