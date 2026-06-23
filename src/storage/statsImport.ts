@@ -2,7 +2,7 @@ import { isContentStatsTagType, parseStatsTagRow, parseStatsWorkRow } from '../a
 import type { StatsImportProgress, StatsImportResult, StatsTagRecord } from '../graph/types';
 import {
   addEdge,
-  calibrateGraphTagNode,
+  calibrateGraphTagNodesBatch,
   clearStatsMetadata,
   countStatsTags,
   ensureTagNodeFromStats,
@@ -13,8 +13,9 @@ import {
 } from './db';
 import { applyStatsTagMergesToGraph, resolveStatsTagForGraph } from './tagCanonical';
 
-const STATS_TAG_BATCH_SIZE = 1000;
+const STATS_TAG_BATCH_SIZE = 5_000;
 const STATS_PROGRESS_INTERVAL = 25_000;
+const STATS_YIELD_INTERVAL = 50_000;
 
 export interface StatsTagsImportOptions {
   onProgress?: (progress: StatsImportProgress) => void;
@@ -32,7 +33,9 @@ export class StatsTagsImporter {
   private readonly applyToGraph: boolean;
   private readonly onProgress?: (progress: StatsImportProgress) => void;
   private readonly graphTags: Map<string, number>;
+  private readonly graphTagNames: Set<string>;
   private batch: StatsTagRecord[] = [];
+  private calibration = new Map<number, number>();
   private rowsProcessed = 0;
   private tagsStored = 0;
   private tagsCalibrated = 0;
@@ -43,6 +46,7 @@ export class StatsTagsImporter {
     options: StatsTagsImportOptions,
   ) {
     this.graphTags = graphTags;
+    this.graphTagNames = new Set(graphTags.keys());
     this.storeGlobal = options.storeGlobal ?? true;
     this.applyToGraph = options.applyToGraph ?? true;
     this.onProgress = options.onProgress;
@@ -86,9 +90,17 @@ export class StatsTagsImporter {
       if (this.applyToGraph) {
         const nodeId = this.graphTags.get(row.name);
         if (nodeId != null) {
-          await calibrateGraphTagNode(nodeId, row.cachedCount);
-          this.tagsCalibrated += 1;
+          const previous = this.calibration.get(nodeId);
+          if (previous == null || row.cachedCount > previous) {
+            this.calibration.set(nodeId, row.cachedCount);
+          }
         }
+      }
+
+      if (this.rowsProcessed % STATS_YIELD_INTERVAL === 0) {
+        await new Promise<void>((resolve) => {
+          setTimeout(resolve, 0);
+        });
       }
 
       if (this.rowsProcessed % STATS_PROGRESS_INTERVAL === 0) {
@@ -96,7 +108,7 @@ export class StatsTagsImporter {
           phase: 'tags',
           rowsProcessed: this.rowsProcessed,
           tagsStored: this.tagsStored,
-          tagsCalibrated: this.tagsCalibrated,
+          tagsCalibrated: this.calibration.size,
           tagsMerged: 0,
           worksMatched: 0,
           edgesAdded: 0,
@@ -108,6 +120,10 @@ export class StatsTagsImporter {
 
   async finish(): Promise<StatsImportResult> {
     await this.flushBatch();
+    if (this.applyToGraph) {
+      await calibrateGraphTagNodesBatch(this.calibration);
+      this.tagsCalibrated = this.calibration.size;
+    }
     const tagsMerged = this.applyToGraph ? await applyStatsTagMergesToGraph() : 0;
     const result: StatsImportResult = {
       tagsStored: this.tagsStored,
@@ -127,7 +143,7 @@ export class StatsTagsImporter {
 
   private async flushBatch(): Promise<void> {
     if (!this.storeGlobal || this.batch.length === 0) return;
-    await putStatsTagsBatch(this.batch);
+    await putStatsTagsBatch(this.batch, { indexNames: this.graphTagNames });
     this.tagsStored += this.batch.length;
     this.batch = [];
   }
@@ -196,6 +212,7 @@ export class StatsWorksImporter {
           rowsProcessed: this.rowsProcessed,
           tagsStored: 0,
           tagsCalibrated: 0,
+          tagsMerged: 0,
           worksMatched: this.worksMatched,
           edgesAdded: this.edgesAdded,
           message: `Processed ${this.rowsProcessed.toLocaleString()} work rows…`,

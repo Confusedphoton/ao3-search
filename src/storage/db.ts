@@ -508,38 +508,67 @@ export async function clearStatsMetadata(): Promise<void> {
 
 export async function getGraphTagNameToNodeId(): Promise<Map<string, number>> {
   return tx('nodes', 'readonly', async (transaction) => {
-    const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
     const map = new Map<string, number>();
-    for (const node of nodes) {
-      if (node.kind === NodeKind.Tag) {
-        map.set(node.key, node.id);
-      }
-    }
+    const store = transaction.objectStore('nodes');
+    await new Promise<void>((resolve, reject) => {
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        const node = cursor.value as GraphNode;
+        if (node.kind === NodeKind.Tag) {
+          map.set(node.key, node.id);
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
     return map;
   });
 }
 
 export async function getGraphWorkKeyToNodeId(): Promise<Map<string, number>> {
   return tx('nodes', 'readonly', async (transaction) => {
-    const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
     const map = new Map<string, number>();
-    for (const node of nodes) {
-      if (node.kind === NodeKind.Work) {
-        map.set(node.key, node.id);
-      }
-    }
+    const store = transaction.objectStore('nodes');
+    await new Promise<void>((resolve, reject) => {
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        const node = cursor.value as GraphNode;
+        if (node.kind === NodeKind.Work) {
+          map.set(node.key, node.id);
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
     return map;
   });
 }
 
-export async function putStatsTagsBatch(records: StatsTagRecord[]): Promise<void> {
+export async function putStatsTagsBatch(
+  records: StatsTagRecord[],
+  options?: { indexNames?: Set<string> },
+): Promise<void> {
   if (records.length === 0) return;
+  const indexAllNames = options?.indexNames == null;
   await tx(['statsTags', 'statsTagNames'], 'readwrite', async (transaction) => {
     const tagStore = transaction.objectStore('statsTags');
     const nameStore = transaction.objectStore('statsTagNames');
     for (const record of records) {
       tagStore.put(record);
-      if (record.name) {
+      if (
+        record.name &&
+        (indexAllNames || options.indexNames.has(record.name))
+      ) {
         nameStore.put({ name: record.name, tagId: record.tagId } satisfies StatsTagNameIndex);
       }
     }
@@ -562,8 +591,25 @@ export async function getStatsTagByName(name: string): Promise<StatsTagRecord | 
 
 export async function getAllGraphTagNodes(): Promise<GraphNode[]> {
   return tx('nodes', 'readonly', async (transaction) => {
-    const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
-    return nodes.filter((node) => node.kind === NodeKind.Tag);
+    const tags: GraphNode[] = [];
+    const store = transaction.objectStore('nodes');
+    await new Promise<void>((resolve, reject) => {
+      const request = store.openCursor();
+      request.onsuccess = () => {
+        const cursor = request.result;
+        if (!cursor) {
+          resolve();
+          return;
+        }
+        const node = cursor.value as GraphNode;
+        if (node.kind === NodeKind.Tag) {
+          tags.push(node);
+        }
+        cursor.continue();
+      };
+      request.onerror = () => reject(request.error);
+    });
+    return tags;
   });
 }
 
@@ -680,13 +726,20 @@ export async function countStatsTags(): Promise<number> {
 }
 
 export async function calibrateGraphTagNode(nodeId: number, cachedCount: number): Promise<void> {
+  await calibrateGraphTagNodesBatch(new Map([[nodeId, cachedCount]]));
+}
+
+export async function calibrateGraphTagNodesBatch(updates: Map<number, number>): Promise<void> {
+  if (updates.size === 0) return;
   await tx('nodes', 'readwrite', async (transaction) => {
     const store = transaction.objectStore('nodes');
-    const node = await idbGet<GraphNode>(store, nodeId);
-    if (!node || node.kind !== NodeKind.Tag) return;
-    const calibratedFreq =
-      node.calibratedFreq == null ? cachedCount : Math.max(node.calibratedFreq, cachedCount);
-    store.put({ ...node, calibratedFreq });
+    for (const [nodeId, cachedCount] of updates) {
+      const node = await idbGet<GraphNode>(store, nodeId);
+      if (!node || node.kind !== NodeKind.Tag) continue;
+      const calibratedFreq =
+        node.calibratedFreq == null ? cachedCount : Math.max(node.calibratedFreq, cachedCount);
+      store.put({ ...node, calibratedFreq });
+    }
   });
 }
 

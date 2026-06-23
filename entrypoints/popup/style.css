@@ -1,6 +1,8 @@
+@import '@/src/ui/theme.css';
+
 :root {
-  color: #1a1a1a;
-  background: #fafafa;
+  color: var(--text-primary);
+  background: var(--bg-page);
   font-family: system-ui, sans-serif;
   font-size: 14px;
   line-height: 1.4;
@@ -24,14 +26,14 @@ header h1 {
 
 .subtitle {
   margin: 0 0 12px;
-  color: #555;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 section {
   margin-bottom: 14px;
   padding-bottom: 12px;
-  border-bottom: 1px solid #e5e5e5;
+  border-bottom: 1px solid var(--border);
 }
 
 section:last-child {
@@ -51,13 +53,13 @@ h2 {
   font-size: 13px;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: #444;
+  color: var(--text-heading);
 }
 
 button {
-  border: 1px solid #900;
-  background: #fff;
-  color: #900;
+  border: 1px solid var(--accent);
+  background: var(--bg-surface);
+  color: var(--accent);
   border-radius: 4px;
   padding: 4px 8px;
   cursor: pointer;
@@ -84,19 +86,19 @@ li {
 }
 
 li.empty {
-  color: #666;
+  color: var(--text-muted);
   font-style: italic;
 }
 
 .status {
   margin: 0;
-  color: #555;
+  color: var(--text-secondary);
   font-size: 12px;
 }
 
 #results a {
   flex: 1;
-  color: #900;
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -105,24 +107,24 @@ li.empty {
 }
 
 .rank {
-  color: #666;
+  color: var(--text-muted);
   min-width: 1.5em;
 }
 
 .score {
   font-size: 11px;
-  color: #666;
+  color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
 
 .negative-section {
-  border-left: 3px solid #666;
+  border-left: 3px solid var(--text-muted);
   padding-left: 10px;
 }
 
 .hint {
   margin: 0 0 8px;
-  color: #666;
+  color: var(--text-muted);
   font-size: 12px;
 }
 
@@ -134,7 +136,7 @@ li.empty {
 .seed-kind,
 .negative-kind {
   font-size: 11px;
-  color: #666;
+  color: var(--text-muted);
   text-transform: uppercase;
 }
 
@@ -152,10 +154,10 @@ li.empty {
   margin: 0;
   padding: 4px 0;
   list-style: none;
-  background: #fff;
-  border: 1px solid #ccc;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-input);
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px var(--shadow);
   max-height: 160px;
   overflow-y: auto;
 }
@@ -173,18 +175,18 @@ li.empty {
   border: none;
   border-radius: 0;
   background: transparent;
-  color: #1a1a1a;
+  color: var(--text-primary);
   padding: 6px 10px;
   text-align: left;
 }
 
 .tag-suggestion:hover {
-  background: #f5f5f5;
+  background: var(--bg-hover);
 }
 
 .tag-meta {
   font-size: 11px;
-  color: #666;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 
@@ -196,10 +198,12 @@ li.empty {
 
 .tag-form input {
   flex: 1;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 12px;
+  background: var(--bg-surface);
+  color: var(--text-primary);
 }
 
 .actions {
@@ -212,8 +216,8 @@ li.empty {
   margin-left: 6px;
   padding: 1px 5px;
   border-radius: 999px;
-  background: #900;
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-on);
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -228,9 +232,9 @@ li.empty {
 .import-prompt {
   margin-top: 10px;
   padding: 10px;
-  border: 1px solid #ccc;
+  border: 1px solid var(--border-input);
   border-radius: 4px;
-  background: #fff;
+  background: var(--bg-surface);
 }
 
 .import-prompt-title {
@@ -245,51 +249,17 @@ li.empty {
   margin-top: 8px;
 }
 
-.stats-import {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid #e5e5e5;
-}
-
-.stats-import-title {
-  margin: 0 0 4px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: #444;
-}
-
-.stats-file-row {
-  display: grid;
-  grid-template-columns: 72px 1fr auto;
-  gap: 6px;
-  align-items: center;
-  margin-bottom: 6px;
-  font-size: 12px;
-}
-
-.stats-file-name {
-  color: #555;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stats-option {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin: 8px 0;
-  font-size: 12px;
-  color: #555;
-}
-
-#import-stats {
-  width: 100%;
-}
-
 button.danger {
-  border-color: #600;
-  color: #600;
+  border-color: var(--accent-danger);
+  color: var(--accent-danger);
+}
+
+.link-button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--link);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }

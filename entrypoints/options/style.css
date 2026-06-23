@@ -1,0 +1,104 @@
+@import '@/src/ui/theme.css';
+
+:root {
+  color: var(--text-primary);
+  background: var(--bg-page);
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 24px 20px 40px;
+}
+
+header h1 {
+  margin: 0 0 4px;
+  font-size: 22px;
+}
+
+.subtitle {
+  margin: 0 0 24px;
+  color: var(--text-secondary);
+}
+
+section {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-surface);
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+}
+
+.hint {
+  margin: 0 0 8px;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.status {
+  margin: 10px 0 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.status.error {
+  color: var(--error);
+}
+
+.file-row {
+  display: grid;
+  grid-template-columns: 88px 1fr auto;
+  gap: 10px;
+  align-items: center;
+  margin: 12px 0;
+}
+
+.file-row label {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.optional {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+  font-size: 13px;
+  color: var(--text-heading);
+}
+
+#import-stats {
+  margin-top: 4px;
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+#import-stats:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+#import-stats:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}

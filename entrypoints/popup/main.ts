@@ -13,8 +13,6 @@ import { isExtensionMessage } from '@/src/messaging/types';
 import { sendMessage } from '@/src/messaging/protocol';
 import { authorWorksUrl, tagWorksUrl } from '@/src/ao3/types';
 import { MAX_NEGATIVE_SEEDS, MAX_SEEDS, MIN_SEEDS } from '@/src/config/constants';
-import { isStatsTagsFileName, isStatsWorksFileName } from '@/src/ao3/statsDump';
-import { STATS_IMPORT_PORT_NAME } from '@/src/messaging/statsImportPort';
 import { parseGraphExport } from '@/src/storage/graphIo';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -32,13 +30,6 @@ let graphStats: GraphStats | null = null;
 let graphMessage = '';
 let pendingImport: GraphExport | null = null;
 let pendingImportFileName = '';
-let statsTagsFile: File | null = null;
-let statsWorksFile: File | null = null;
-let statsImporting = false;
-let statsImportMessage = '';
-let statsClearExisting = false;
-
-const STATS_FILE_CHUNK_BYTES = 512 * 1024;
 
 function positiveSeedLabel(seed: PositiveSeed): string {
   if (seed.kind === 'work') return seed.title;
@@ -248,33 +239,13 @@ function render(): void {
         }
       </p>
       ${graphMessage ? `<p class="status graph-status">${escapeHtml(graphMessage)}</p>` : ''}
+      <p class="hint">Large graph files may take a few seconds to load.</p>
+      <p class="hint">
+        <button id="open-settings" type="button" class="link-button">Open settings</button>
+        to import AO3 stats metadata.
+      </p>
       <input id="import-graph-input" type="file" accept="application/json,.json" hidden />
       ${renderImportPrompt()}
-
-      <div class="stats-import">
-        <p class="stats-import-title">AO3 stats metadata</p>
-        <p class="hint">Import the official dump (e.g. tags-20210226.csv and works-20210226.csv) to calibrate tag frequencies. The optional works file can add tag edges for graph works whose ID matches the dump row number.</p>
-        <label class="stats-file-row">
-          <span>Tags CSV</span>
-          <span class="stats-file-name">${statsTagsFile ? escapeHtml(statsTagsFile.name) : 'None selected'}</span>
-          <button id="pick-stats-tags" type="button" ${searching || statsImporting ? 'disabled' : ''}>Choose</button>
-        </label>
-        <label class="stats-file-row">
-          <span>Works CSV</span>
-          <span class="stats-file-name">${statsWorksFile ? escapeHtml(statsWorksFile.name) : 'Optional'}</span>
-          <button id="pick-stats-works" type="button" ${searching || statsImporting ? 'disabled' : ''}>Choose</button>
-        </label>
-        <label class="stats-option">
-          <input id="stats-clear-existing" type="checkbox" ${statsClearExisting ? 'checked' : ''} ${searching || statsImporting ? 'disabled' : ''} />
-          Replace stored global tag metadata
-        </label>
-        <button id="import-stats" type="button" ${searching || statsImporting || !statsTagsFile ? 'disabled' : ''}>
-          ${statsImporting ? 'Importing…' : 'Import stats'}
-        </button>
-        ${statsImportMessage ? `<p class="status graph-status">${escapeHtml(statsImportMessage)}</p>` : ''}
-        <input id="import-stats-tags-input" type="file" accept=".csv,text/csv" hidden />
-        <input id="import-stats-works-input" type="file" accept=".csv,text/csv" hidden />
-      </div>
     </section>
   `;
 
@@ -401,6 +372,10 @@ function bindEvents(): void {
     document.querySelector<HTMLInputElement>('#import-graph-input')?.click();
   });
 
+  document.querySelector('#open-settings')?.addEventListener('click', () => {
+    void browser.runtime.openOptionsPage();
+  });
+
   document.querySelector('#import-graph-input')?.addEventListener('change', (event) => {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
@@ -421,50 +396,6 @@ function bindEvents(): void {
     pendingImport = null;
     pendingImportFileName = '';
     render();
-  });
-
-  document.querySelector('#pick-stats-tags')?.addEventListener('click', () => {
-    document.querySelector<HTMLInputElement>('#import-stats-tags-input')?.click();
-  });
-
-  document.querySelector('#pick-stats-works')?.addEventListener('click', () => {
-    document.querySelector<HTMLInputElement>('#import-stats-works-input')?.click();
-  });
-
-  document.querySelector('#import-stats-tags-input')?.addEventListener('change', (event) => {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] ?? null;
-    input.value = '';
-    if (file && !isStatsTagsFileName(file.name)) {
-      statsImportMessage = 'Expected a tags-YYYYMMDD.csv file.';
-      render();
-      return;
-    }
-    statsTagsFile = file;
-    statsImportMessage = '';
-    render();
-  });
-
-  document.querySelector('#import-stats-works-input')?.addEventListener('change', (event) => {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0] ?? null;
-    input.value = '';
-    if (file && !isStatsWorksFileName(file.name)) {
-      statsImportMessage = 'Expected a works-YYYYMMDD.csv file.';
-      render();
-      return;
-    }
-    statsWorksFile = file;
-    statsImportMessage = '';
-    render();
-  });
-
-  document.querySelector('#stats-clear-existing')?.addEventListener('change', (event) => {
-    statsClearExisting = (event.target as HTMLInputElement).checked;
-  });
-
-  document.querySelector('#import-stats')?.addEventListener('click', () => {
-    void importStatsMetadata();
   });
 }
 
@@ -503,85 +434,6 @@ async function exportCurrentGraph(): Promise<void> {
   }
   if (response?.type === 'GraphImportResult' && !response.success) {
     graphMessage = response.message;
-    render();
-  }
-}
-
-async function streamFileOverPort(
-  port: ReturnType<typeof browser.runtime.connect>,
-  kind: 'tags' | 'works',
-  file: File,
-): Promise<void> {
-  const reader = file.stream().getReader();
-  const decoder = new TextDecoder();
-  let pending = '';
-
-  while (true) {
-    const { done, value } = await reader.read();
-    pending += decoder.decode(value ?? new Uint8Array(), { stream: !done });
-
-    while (pending.length >= STATS_FILE_CHUNK_BYTES) {
-      const chunk = pending.slice(0, STATS_FILE_CHUNK_BYTES);
-      pending = pending.slice(STATS_FILE_CHUNK_BYTES);
-      port.postMessage({ type: 'StatsImportChunk', kind, data: chunk, final: false });
-    }
-
-    if (done) {
-      port.postMessage({ type: 'StatsImportChunk', kind, data: pending, final: true });
-      break;
-    }
-  }
-}
-
-async function importStatsMetadata(): Promise<void> {
-  if (!statsTagsFile || statsImporting) return;
-
-  statsImporting = true;
-  statsImportMessage = 'Starting stats import…';
-  render();
-
-  const port = browser.runtime.connect({ name: STATS_IMPORT_PORT_NAME });
-
-  const completion = new Promise<{ success: boolean; message: string }>((resolve, reject) => {
-    port.onMessage.addListener((message) => {
-      if (message?.type === 'StatsImportProgress') {
-        statsImportMessage = message.payload.message ?? 'Importing stats…';
-        render();
-        return;
-      }
-      if (message?.type === 'StatsImportComplete') {
-        resolve({ success: message.success, message: message.message });
-      }
-    });
-    port.onDisconnect.addListener(() => {
-      if (browser.runtime.lastError) {
-        reject(new Error(browser.runtime.lastError.message));
-      }
-    });
-  });
-
-  try {
-    port.postMessage({
-      type: 'StatsImportStart',
-      clearExisting: statsClearExisting,
-      importWorks: statsWorksFile != null,
-    });
-
-    await streamFileOverPort(port, 'tags', statsTagsFile);
-    if (statsWorksFile) {
-      await streamFileOverPort(port, 'works', statsWorksFile);
-    }
-
-    const result = await completion;
-    statsImportMessage = result.message;
-    if (result.success) {
-      await refreshGraphStats();
-    }
-  } catch (err) {
-    statsImportMessage = err instanceof Error ? err.message : String(err);
-  } finally {
-    statsImporting = false;
-    port.disconnect();
     render();
   }
 }
@@ -692,9 +544,6 @@ function applyState(message: ExtensionMessage): void {
   } else if (message.type === 'GraphImportResult') {
     graphMessage = message.message;
     if (message.stats) graphStats = message.stats;
-    render();
-  } else if (message.type === 'StatsImportProgress') {
-    statsImportMessage = message.payload.message ?? 'Importing stats…';
     render();
   }
 }
