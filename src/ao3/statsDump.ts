@@ -1,5 +1,11 @@
 import { STATS_SYSTEM_TAG_TYPES } from '../config/constants';
 
+export const REDACTED_STATS_TAG_NAME = 'Redacted';
+
+export function isRedactedStatsTagName(name: string): boolean {
+  return name.trim() === REDACTED_STATS_TAG_NAME;
+}
+
 export interface StatsTagRow {
   tagId: number;
   type: string;
@@ -7,17 +13,6 @@ export interface StatsTagRow {
   canonical: boolean;
   cachedCount: number;
   mergerId: number | null;
-}
-
-export interface StatsWorkRow {
-  /** 1-based row number in the works CSV (synthetic dump ID). */
-  rowId: number;
-  creationDate: string;
-  language: string;
-  restricted: boolean;
-  complete: boolean;
-  wordCount: number;
-  tagIds: number[];
 }
 
 export function isContentStatsTagType(type: string): boolean {
@@ -83,45 +78,19 @@ export function parseStatsTagRow(line: string): StatsTagRow | null {
   if (!Number.isFinite(cachedCount) || cachedCount < 0) return null;
 
   const mergerId = fields.length >= 6 ? parseOptionalInt(fields[5]) : null;
+  const name = fields[2];
+  if (isRedactedStatsTagName(name)) return null;
 
   return {
     tagId,
     type: fields[1].trim(),
-    name: fields[2],
+    name,
     canonical: parseBooleanField(fields[3]),
     cachedCount,
     mergerId,
   };
 }
 
-export function parseStatsWorkRow(line: string, rowId: number): StatsWorkRow | null {
-  if (!line.trim()) return null;
-  const fields = parseCsvLine(line);
-  if (fields.length < 6) return null;
-
-  const wordCount = Number.parseInt(fields[4], 10);
-  if (!Number.isFinite(wordCount) || wordCount < 0) return null;
-
-  const tagIds = fields[5]
-    .split('+')
-    .map((part) => Number.parseInt(part, 10))
-    .filter((id) => Number.isFinite(id) && id >= 0);
-
-  return {
-    rowId,
-    creationDate: fields[0].trim(),
-    language: fields[1].trim(),
-    restricted: parseBooleanField(fields[2]),
-    complete: parseBooleanField(fields[3]),
-    wordCount,
-    tagIds,
-  };
-}
-
 export function isStatsTagsFileName(fileName: string): boolean {
   return /tags-\d{8}\.csv$/i.test(fileName);
-}
-
-export function isStatsWorksFileName(fileName: string): boolean {
-  return /works-\d{8}\.csv$/i.test(fileName);
 }

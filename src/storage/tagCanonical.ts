@@ -1,3 +1,4 @@
+import { isRedactedStatsTagName } from '../ao3/statsDump';
 import type { StatsTagRecord } from '../graph/types';
 import { NodeKind } from '../graph/types';
 import {
@@ -17,7 +18,8 @@ export async function resolveGraphTagName(tagName: string): Promise<string> {
   if (!statsTag) return trimmed;
 
   const canonical = await resolveCanonicalStatsTag(statsTag, getStatsTag);
-  return canonical.name || trimmed;
+  if (!canonical.name || isRedactedStatsTagName(canonical.name)) return trimmed;
+  return canonical.name;
 }
 
 export async function applyStatsTagMergesToGraph(): Promise<number> {
@@ -32,7 +34,9 @@ export async function applyStatsTagMergesToGraph(): Promise<number> {
     if (!statsTag) continue;
 
     const canonical = await resolveCanonicalStatsTag(statsTag, getStatsTag);
-    if (!canonical.name || canonical.name === node.key) continue;
+    if (!canonical.name || canonical.name === node.key || isRedactedStatsTagName(canonical.name)) {
+      continue;
+    }
 
     await canonicalizeGraphTagNode(node.id, canonical.name, canonical.cachedCount);
     merged += 1;

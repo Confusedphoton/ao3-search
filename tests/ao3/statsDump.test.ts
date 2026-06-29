@@ -1,11 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   isContentStatsTagType,
+  isRedactedStatsTagName,
   isStatsTagsFileName,
-  isStatsWorksFileName,
   parseCsvLine,
   parseStatsTagRow,
-  parseStatsWorkRow,
 } from '@/src/ao3/statsDump';
 
 describe('stats dump CSV parsing', () => {
@@ -32,25 +31,14 @@ describe('stats dump CSV parsing', () => {
     });
   });
 
-  it('parses work rows with tag ids', () => {
-    const row = parseStatsWorkRow(
-      '2021-02-26,en,false,true,388,10+414093+1001939+21+16',
-      1,
-    );
-    expect(row).toEqual({
-      rowId: 1,
-      creationDate: '2021-02-26',
-      language: 'en',
-      restricted: false,
-      complete: true,
-      wordCount: 388,
-      tagIds: [10, 414093, 1001939, 21, 16],
-    });
+  it('skips redacted tag rows', () => {
+    expect(parseStatsTagRow('42,Freeform,Redacted,true,100,')).toBeNull();
+    expect(isRedactedStatsTagName('Redacted')).toBe(true);
+    expect(isRedactedStatsTagName(' Fluff ')).toBe(false);
   });
 
   it('recognizes official dump filenames', () => {
     expect(isStatsTagsFileName('tags-20210226.csv')).toBe(true);
-    expect(isStatsWorksFileName('works-20210226.csv')).toBe(true);
     expect(isStatsTagsFileName('works-20210226.csv')).toBe(false);
   });
 

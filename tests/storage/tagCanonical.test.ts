@@ -164,6 +164,45 @@ describe('tag canonicalization', () => {
     expect(synonym).toBeNull();
   });
 
+  it('does not merge graph tags into redacted canonical names', async () => {
+    await mergeWorkPage({
+      workId: '10',
+      title: 'Work',
+      tags: ['Hidden Tag'],
+      authors: [],
+    });
+
+    await putStatsTagsBatch([
+      {
+        tagId: 183,
+        name: 'Hidden Tag',
+        type: 'Freeform',
+        canonical: false,
+        cachedCount: 10,
+        mergerId: 999,
+      },
+      {
+        tagId: 999,
+        name: 'Redacted',
+        type: 'Freeform',
+        canonical: true,
+        cachedCount: 100,
+        mergerId: null,
+      },
+    ]);
+
+    const merged = await applyStatsTagMergesToGraph();
+    expect(merged).toBe(0);
+
+    const resolved = await resolveGraphTagName('Hidden Tag');
+    expect(resolved).toBe('Hidden Tag');
+
+    const snapshot = await loadGraphSnapshot();
+    const tagNodes = snapshot.nodes.filter((node) => node.kind === NodeKind.Tag);
+    expect(tagNodes).toHaveLength(1);
+    expect(tagNodes[0]?.key).toBe('Hidden Tag');
+  });
+
   it('routes new tag upserts through canonical names when stats are known', async () => {
     await putStatsTagsBatch([
       {

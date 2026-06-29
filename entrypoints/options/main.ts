@@ -1,18 +1,16 @@
 import './style.css';
-import { isStatsTagsFileName, isStatsWorksFileName } from '@/src/ao3/statsDump';
+import { isStatsTagsFileName } from '@/src/ao3/statsDump';
 import type { GraphStats } from '@/src/graph/types';
 import { runStatsImportLocal } from '@/src/storage/statsImportRunner';
 import { sendMessage } from '@/src/messaging/protocol';
 
 const tagsInput = document.querySelector<HTMLInputElement>('#stats-tags-file')!;
-const worksInput = document.querySelector<HTMLInputElement>('#stats-works-file')!;
 const clearCheckbox = document.querySelector<HTMLInputElement>('#stats-clear-existing')!;
 const importButton = document.querySelector<HTMLButtonElement>('#import-stats')!;
 const statusEl = document.querySelector<HTMLParagraphElement>('#stats-status')!;
 const graphStatsEl = document.querySelector<HTMLParagraphElement>('#graph-stats')!;
 
 let tagsFile: File | null = null;
-let worksFile: File | null = null;
 let importing = false;
 
 function formatGraphStats(stats: GraphStats): string {
@@ -50,17 +48,6 @@ tagsInput.addEventListener('change', () => {
   updateImportButton();
 });
 
-worksInput.addEventListener('change', () => {
-  const file = worksInput.files?.[0] ?? null;
-  if (file && !isStatsWorksFileName(file.name)) {
-    worksFile = null;
-    setStatus('Expected a works-YYYYMMDD.csv file.', true);
-    return;
-  }
-  worksFile = file;
-  statusEl.hidden = true;
-});
-
 importButton.addEventListener('click', () => {
   void importStats();
 });
@@ -74,7 +61,6 @@ async function importStats(): Promise<void> {
 
   const result = await runStatsImportLocal({
     tagsFile,
-    worksFile,
     clearExisting: clearCheckbox.checked,
     onProgress: (message) => setStatus(message),
   });
@@ -85,9 +71,7 @@ async function importStats(): Promise<void> {
 
   if (result.success) {
     tagsFile = null;
-    worksFile = null;
     tagsInput.value = '';
-    worksInput.value = '';
     updateImportButton();
     await refreshGraphStats();
   }

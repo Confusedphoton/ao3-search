@@ -17,9 +17,8 @@
       <section>
         <h2>AO3 stats metadata</h2>
         <p class="hint">
-          Import the official dump (e.g. tags-20210226.csv and works-20210226.csv) to calibrate tag
-          frequencies. The optional works file can add tag edges for graph works whose ID matches the
-          dump row number.
+          Import the official tags dump (e.g. tags-20210226.csv) to calibrate tag frequencies and
+          resolve synonym merges.
         </p>
         <p class="hint">These are large files and will take a few seconds to load. The import streams one row at a time to keep memory use low.</p>
         <p id="graph-stats" class="status"></p>
@@ -27,11 +26,6 @@
         <div class="file-row">
           <label for="stats-tags-file">Tags CSV</label>
           <input id="stats-tags-file" type="file" accept=".csv,text/csv" />
-        </div>
-        <div class="file-row">
-          <label for="stats-works-file">Works CSV</label>
-          <input id="stats-works-file" type="file" accept=".csv,text/csv" />
-          <span class="optional">Optional</span>
         </div>
 
         <label class="checkbox-row">
