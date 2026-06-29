@@ -6,12 +6,11 @@ import {
 } from '../config/constants';
 import { runPropagation } from './engine';
 import { buildPropagationGraphFromArrays } from './queryGraph';
-import { CONFIDENCE_SIGNAL_ID, createConfidenceSignal } from './signals/confidence';
 import {
-  createRankSeedContext,
-  createRankSignal,
-  RANK_SIGNAL_ID,
-} from './signals/rank';
+  createRelevanceSignal,
+  createSeedContext,
+  RELEVANCE_SIGNAL_ID,
+} from './signals/relevance';
 import type { PropagationParams, PropagationResult, SeedContext, SignalInstance } from './types';
 
 export type { PropagationGraph, PropagationParams, PropagationResult, SeedContext, SignalInstance, SignalUpdateRule } from './types';
@@ -22,12 +21,11 @@ export { applyPageRankStep, l1Normalize, pageRankUpdateRule } from './rules/page
 export { buildTransitionWeights } from './queryGraph';
 export {
   RELEVANCE_SIGNAL_ID,
-  RANK_SIGNAL_ID,
-  buildRankTeleport,
-  createRankSeedContext,
-  createRankSignal,
-  rankUpdateRule,
-} from './signals/rank';
+  buildRelevanceTeleport,
+  createRelevanceSignal,
+  createSeedContext,
+  relevanceUpdateRule,
+} from './signals/relevance';
 export {
   AUTHORITY_SIGNAL_ID,
   authorityUpdateRule,
@@ -55,7 +53,7 @@ export {
 } from './runQueryPropagation';
 export type { QueryPropagationInput, QueryPropagationResult } from './runQueryPropagation';
 
-export interface RankPropagationInput {
+export interface RelevancePropagationInput {
   offsets: number[];
   neighbors: number[];
   edgeWeights: number[];
@@ -68,17 +66,14 @@ export interface RankPropagationInput {
   tolerance?: number;
 }
 
-export interface RankPropagationResult {
-  /** @deprecated Use relevance */
-  authority: Float64Array;
+export interface RelevancePropagationResult {
   relevance: Float64Array;
   iterations: number;
   delta: number;
 }
 
 const SIGNAL_FACTORIES: Record<string, (context: SeedContext) => SignalInstance> = {
-  [RANK_SIGNAL_ID]: createRankSignal,
-  [CONFIDENCE_SIGNAL_ID]: createConfidenceSignal,
+  [RELEVANCE_SIGNAL_ID]: createRelevanceSignal,
 };
 
 export function createSignals(
@@ -92,7 +87,9 @@ export function createSignals(
   });
 }
 
-export function runRankPropagation(input: RankPropagationInput): RankPropagationResult {
+export function runRelevancePropagation(
+  input: RelevancePropagationInput,
+): RelevancePropagationResult {
   const {
     offsets,
     neighbors,
@@ -107,10 +104,10 @@ export function runRankPropagation(input: RankPropagationInput): RankPropagation
   } = input;
 
   const nodeCount = offsets.length - 1;
-  const authority = new Float64Array(nodeCount);
+  const relevance = new Float64Array(nodeCount);
 
   if (seedIndices.length === 0 && negativeSeedIndices.length === 0) {
-    return { authority, relevance: authority, iterations: 0, delta: 0 };
+    return { relevance, iterations: 0, delta: 0 };
   }
 
   const graph = buildPropagationGraphFromArrays(
@@ -120,26 +117,23 @@ export function runRankPropagation(input: RankPropagationInput): RankPropagation
     negativeSeedIndices,
     rowOutFractions,
   );
-  const context = createRankSeedContext(
+  const context = createSeedContext(
     nodeCount,
     seedIndices,
     negativeSeedIndices,
     negativeWeight,
   );
   const params: PropagationParams = { alpha, maxIterations, tolerance };
-  const result = runPropagation(graph, [createRankSignal(context)], params);
-
-  const relevance = result.signals[RANK_SIGNAL_ID] ?? authority;
+  const result = runPropagation(graph, [createRelevanceSignal(context)], params);
 
   return {
-    authority: relevance,
-    relevance,
+    relevance: result.signals[RELEVANCE_SIGNAL_ID] ?? relevance,
     iterations: result.iterations,
-    delta: result.deltas[RANK_SIGNAL_ID] ?? 0,
+    delta: result.deltas[RELEVANCE_SIGNAL_ID] ?? 0,
   };
 }
 
-export interface MultiSignalPropagationInput extends RankPropagationInput {
+export interface MultiSignalPropagationInput extends RelevancePropagationInput {
   signalIds: string[];
 }
 
@@ -181,7 +175,7 @@ export function runMultiSignalPropagation(
     negativeSeedIndices,
     rowOutFractions,
   );
-  const context = createRankSeedContext(
+  const context = createSeedContext(
     nodeCount,
     seedIndices,
     negativeSeedIndices,
@@ -194,12 +188,12 @@ export function runMultiSignalPropagation(
 }
 
 export function topWorkIndices(
-  state: Float64Array,
+  relevance: Float64Array,
   workIndices: number[],
   limit: number,
 ): Array<{ index: number; score: number }> {
   const ranked = workIndices
-    .map((index) => ({ index, score: state[index] }))
+    .map((index) => ({ index, score: relevance[index] }))
     .sort((a, b) => b.score - a.score);
   return ranked.slice(0, limit);
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { l1Normalize } from '@/src/propagation/rules/pageRankStep';
 import { buildTransitionWeights } from '@/src/propagation/queryGraph';
-import { runRankPropagation } from '@/src/propagation';
+import { runRelevancePropagation } from '@/src/propagation';
 
 describe('l1Normalize', () => {
   it('scales the state vector to unit L1 norm', () => {
@@ -26,8 +26,8 @@ describe('buildTransitionWeights', () => {
 });
 
 describe('open subgraph propagation', () => {
-  it('produces a unit L1 norm authority vector', () => {
-    const result = runRankPropagation({
+  it('produces a unit L1 norm relevance vector', () => {
+    const result = runRelevancePropagation({
       offsets: [0, 1, 2],
       neighbors: [1, 0],
       edgeWeights: [1, 1],
@@ -38,11 +38,11 @@ describe('open subgraph propagation', () => {
       tolerance: 1e-8,
     });
 
-    const norm = [...result.authority].reduce((sum, value) => sum + Math.abs(value), 0);
+    const norm = [...result.relevance].reduce((sum, value) => sum + Math.abs(value), 0);
     expect(norm).toBeCloseTo(1, 6);
   });
 
-  it('row out fractions change the authority distribution', () => {
+  it('row out fractions change the relevance distribution', () => {
     const base = {
       offsets: [0, 1, 2],
       neighbors: [1, 0],
@@ -54,9 +54,9 @@ describe('open subgraph propagation', () => {
       tolerance: 1e-8,
     };
 
-    const closed = runRankPropagation(base);
-    const open = runRankPropagation({ ...base, rowOutFractions: [1, 0.1] });
+    const closed = runRelevancePropagation(base);
+    const open = runRelevancePropagation({ ...base, rowOutFractions: [1, 0.1] });
 
-    expect([...open.authority]).not.toEqual([...closed.authority]);
+    expect([...open.relevance]).not.toEqual([...closed.relevance]);
   });
 });

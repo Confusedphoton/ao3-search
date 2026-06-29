@@ -235,7 +235,7 @@ function rankWorks(
       workId: item.node.key,
       title: resolveWorkTitle(item.node.key, item.node.title, seedTitleMap),
       url: workUrl(item.node.key),
-      authority: item.score,
+      relevance: item.score,
     }));
 }
 

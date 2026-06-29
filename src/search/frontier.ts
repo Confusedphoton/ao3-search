@@ -49,11 +49,6 @@ export function maxFrontierExpectedInfo(frontier: FrontierNode[]): number {
   return frontier[0]?.expectedInfo ?? 0;
 }
 
-/** @deprecated Use maxFrontierExpectedInfo */
-export function maxFrontierAuthority(frontier: FrontierNode[]): number {
-  return maxFrontierExpectedInfo(frontier);
-}
-
 export function isWorkNode(csr: CSRGraph, nodeId: number): boolean {
   const node = csr.nodeByIndex.find((n) => n.id === nodeId);
   return node?.kind === NodeKind.Work;

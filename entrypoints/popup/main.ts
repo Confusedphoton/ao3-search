@@ -215,7 +215,7 @@ function render(): void {
             <li>
               <span class="rank">${i + 1}.</span>
               <a href="${item.url}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
-              <span class="score">${item.authority.toExponential(2)}</span>
+              <span class="score">${item.relevance.toExponential(2)}</span>
             </li>`,
                 )
                 .join('')

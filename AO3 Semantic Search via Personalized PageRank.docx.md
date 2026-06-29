@@ -31,15 +31,13 @@ Works sharing rare, semantically meaningful tags become strongly connected, whil
 
 Instead of searching directly for tags, we perform a random walk beginning from user-selected seed works.
 
-The resulting authority distribution naturally identifies:
+Each node carries three derived features during a search:
 
-* semantically related works
+* **Relevance** — query-specific Personalized PageRank from seed teleport
+* **Authority** — global PageRank under a non-uniform prior (work word count, author aggregation, tag boundary flux)
+* **Precision** — accumulated independent evidence from priors plus one authority-weighted graph spread
 
-* synonymous or closely related tags
-
-* high-quality under-tagged authors
-
-* previously unknown semantic neighborhoods
+Work results are ranked by **relevance**. Frontier expansion targets nodes with high **expected information** (relevance × authority / precision).
 
 Importantly, **relevance emerges from graph connectivity rather than exact textual similarity.**
 

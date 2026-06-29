@@ -1,14 +1,9 @@
 import type {
-  PPRInputPayload,
-  PPRResultPayload,
   PropagationInputPayload,
   PropagationResultPayload,
   QueryPropagationInputPayload,
   QueryPropagationResultPayload,
 } from '../messaging/types';
-import { RANK_SIGNAL_ID } from '../propagation';
-
-export type WorkerInput = PropagationInputPayload | QueryPropagationInputPayload;
 
 let worker: Worker | null = null;
 
@@ -89,18 +84,6 @@ export async function runQueryPropagationViaWorker(
   });
   getWorker().postMessage({ requestId, input: { ...input, mode: 'query' } });
   return resultPromise;
-}
-
-export async function runPPRViaWorker(input: PPRInputPayload): Promise<PPRResultPayload> {
-  const result = await runPropagationViaWorker({
-    ...input,
-    signalIds: [RANK_SIGNAL_ID],
-  });
-  return {
-    authority: result.signals[RANK_SIGNAL_ID] ?? [],
-    iterations: result.iterations,
-    delta: result.deltas[RANK_SIGNAL_ID] ?? 0,
-  };
 }
 
 export async function closeComputeHost(): Promise<void> {

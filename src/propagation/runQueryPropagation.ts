@@ -17,10 +17,10 @@ import {
 import { buildPropagationGraphFromArrays } from './queryGraph';
 import { createAuthoritySignal, AUTHORITY_SIGNAL_ID } from './signals/authority';
 import {
-  createRankSeedContext,
-  createRankSignal,
+  createSeedContext,
+  createRelevanceSignal,
   RELEVANCE_SIGNAL_ID,
-} from './signals/rank';
+} from './signals/relevance';
 import { computeTagPriorLogFromFlux } from './tagFlux';
 import type { PropagationParams } from './types';
 
@@ -89,13 +89,13 @@ function runRelevancePropagation(
   authority: Float64Array,
   params: PropagationParams,
 ): { relevance: Float64Array; iterations: number } {
-  const context = createRankSeedContext(
+  const context = createSeedContext(
     graph.nodeCount,
     seedIndices,
     negativeSeedIndices,
     negativeWeight,
   );
-  const signal = createRankSignal(context);
+  const signal = createRelevanceSignal(context);
   signal.receiverWeights = authority;
   const result = runPropagation(graph, [signal], params);
   return {

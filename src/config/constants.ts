@@ -9,9 +9,7 @@ export const REQUEST_JITTER_MS = 500;
 export const MAX_FETCH_RETRIES = 3;
 
 export const EXPANSION_BUDGET = 20;
-export const MIN_FRONTIER_AUTHORITY = 1e-5;
-/** @deprecated Use MIN_FRONTIER_EXPECTED_INFO */
-export const MIN_FRONTIER_EXPECTED_INFO = MIN_FRONTIER_AUTHORITY;
+export const MIN_FRONTIER_EXPECTED_INFO = 1e-5;
 
 export const GLOBAL_MEDIAN_WORD_COUNT = 2500;
 export const PRECISION_EPS = 1e-9;

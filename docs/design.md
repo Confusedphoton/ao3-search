@@ -31,17 +31,46 @@ Works sharing rare, semantically meaningful tags become strongly connected, whil
 
 Instead of searching directly for tags, we perform a random walk beginning from user-selected seed works.
 
-The resulting authority distribution naturally identifies:
+Each node carries three derived features during a search:
 
-* semantically related works
+* **Relevance** — query-specific Personalized PageRank from seed teleport
+* **Authority** — global PageRank under a non-uniform prior (work word count, author aggregation, tag boundary flux)
+* **Precision** — accumulated independent evidence from priors plus one authority-weighted graph spread
 
-* synonymous or closely related tags
+Work results are ranked by **relevance**. Frontier expansion targets nodes with high **expected information**:
 
-* high-quality under-tagged authors
-
-* previously unknown semantic neighborhoods
+relevance × authority / (precision + ε)
 
 Importantly, **relevance emerges from graph connectivity rather than exact textual similarity.**
+
+---
+
+# Node Features
+
+## Relevance
+
+Query PPR with seed-weighted teleport. Outgoing spread is weighted by each receiving node's **authority**, so structurally informative nodes attract more query mass.
+
+## Authority
+
+Global PageRank with a **non-uniform restart prior** and partially observable frontier bias (`rowOutFraction`).
+
+| Node type | Prior log `a_i` |
+|---|---|
+| Work | `ln(wordCount / 2500)` |
+| Author | `ln(1 + Σ_{w ∈ authored} exp(a_w))` |
+| Tag | `ln(flux / (flux + internalFlux + ε))` from one-pass boundary flux on the fixed relevance vector |
+
+Authority is recomputed once after tag flux updates tag priors.
+
+## Precision
+
+Precision adds under independent evidence:
+
+* Prior: `τ⁰_i = 1 + ln(1 + exp(a_i))`
+* One spread: `τ'_i = τ⁰_i + Σ_j P[j,i] · authority[j] · τ⁰[j] · ln(1 + exp(a_j))`
+
+Low-precision nodes have higher expected information gain when expanded.
 
 ---
 
@@ -59,11 +88,11 @@ Represent every encountered AO3 tag, canonical or otherwise.
 
 Canonicalization is intentionally avoided. The graph itself is responsible for discovering semantic equivalence.
 
-### Author Nodes (Planned V2)
+### Author Nodes
 
 Authors connect all of their works together.
 
-This allows authority to propagate from a well-tagged work to another work by the same author, solving many cases of systematic under-tagging.
+This allows relevance to propagate from a well-tagged work to another work by the same author, solving many cases of systematic under-tagging.
 
 ---
 
@@ -81,7 +110,7 @@ The underlying graph remains **unweighted**.
 
 ---
 
-# Authority Propagation
+# Transition Weights & Hub Damping
 
 The graph itself is intentionally simple.
 
@@ -145,19 +174,14 @@ The graph expands adaptively.
 
 Each iteration performs:
 
-1. Compute Personalized PageRank.
-
-2. Rank unexplored frontier nodes.
-
-3. Select the next node for expansion.
-
+1. Run query propagation (`runQueryPropagation`): authority → relevance → tag flux → authority refine → precision → expected information.
+2. Rank unexplored frontier nodes by expected information.
+3. Select the next node for expansion (ε-greedy on expected information).
 4. Fetch exactly one new AO3 page.
-
 5. Merge newly discovered nodes and edges.
+6. Recompute query propagation.
 
-6. Recompute PPR.
-
-Because network latency dominates runtime, PPR computation is performed aggressively after each graph update.
+Because network latency dominates runtime, graph propagation is performed aggressively after each graph update.
 
 Computation is intentionally traded for fewer AO3 requests.
 
@@ -171,7 +195,7 @@ Once the graph stabilizes, expansion follows a beam-search strategy.
 
 Maintain the top **K** unexplored frontier nodes.
 
-Most expansions choose the highest-ranked frontier node.
+Most expansions choose the highest **expected-information** frontier node.
 
 Occasionally, an ε-greedy exploration step chooses a random frontier node.
 
@@ -195,7 +219,7 @@ No explicit negative examples are required during normal search.
 
 Instead, negative evidence emerges naturally.
 
-Works unrelated to the seed set simply receive little authority because relatively few random walks reach them.
+Works unrelated to the seed set simply receive little relevance because relatively few random walks reach them.
 
 In other words,
 
@@ -381,11 +405,11 @@ Contains
 
 * negative seeds
 
-* current authority vector
+* relevance, authority, precision vectors
 
-* frontier
+* expected-information frontier
 
-* cached PageRank state
+* cached propagation state
 
 Destroyed after each search.
 
@@ -455,7 +479,7 @@ Coordinates heavy graph operations.
 
 ## Dedicated Web Worker
 
-Executes Personalized PageRank.
+Executes graph propagation (`runQueryPropagation`, relevance-only `runRelevancePropagation`).
 
 Uses typed arrays and sparse graph structures for efficient computation.
 
@@ -487,9 +511,9 @@ Graph expansion terminates when any of the following occur:
 
 * request budget exhausted
 
-* frontier authority falls below threshold
+* frontier expected information falls below threshold
 
-* authority distribution converges
+* relevance distribution converges
 
 * no unexplored high-information frontier nodes remain
 

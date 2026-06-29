@@ -3,10 +3,8 @@ import { pageRankUpdateRule } from '../rules/pageRankStep';
 import type { SeedContext, SignalInstance, SignalUpdateRule } from '../types';
 
 export const RELEVANCE_SIGNAL_ID = 'relevance';
-/** @deprecated Use RELEVANCE_SIGNAL_ID */
-export const RANK_SIGNAL_ID = RELEVANCE_SIGNAL_ID;
 
-export function buildRankTeleport(context: SeedContext): Float64Array {
+export function buildRelevanceTeleport(context: SeedContext): Float64Array {
   const teleport = new Float64Array(context.nodeCount);
 
   if (context.seedIndices.length > 0) {
@@ -26,20 +24,20 @@ export function buildRankTeleport(context: SeedContext): Float64Array {
   return teleport;
 }
 
-export const rankUpdateRule: SignalUpdateRule = pageRankUpdateRule;
+export const relevanceUpdateRule: SignalUpdateRule = pageRankUpdateRule;
 
-export function createRankSignal(context: SeedContext): SignalInstance {
+export function createRelevanceSignal(context: SeedContext): SignalInstance {
   const nodeCount = context.nodeCount;
   return {
     id: RELEVANCE_SIGNAL_ID,
     state: new Float64Array(nodeCount),
-    teleport: buildRankTeleport(context),
+    teleport: buildRelevanceTeleport(context),
     buffer: new Float64Array(nodeCount),
-    rule: rankUpdateRule,
+    rule: relevanceUpdateRule,
   };
 }
 
-export function createRankSeedContext(
+export function createSeedContext(
   nodeCount: number,
   seedIndices: number[],
   negativeSeedIndices: number[] = [],

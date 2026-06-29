@@ -6,9 +6,6 @@ export type PositiveSeed =
   | { kind: 'tag'; tagName: string; url: string }
   | { kind: 'author'; authorKey: string; displayName: string; url: string };
 
-/** @deprecated Use PositiveSeed */
-export type SeedWork = Extract<PositiveSeed, { kind: 'work' }>;
-
 export type NegativeSeed =
   | { kind: 'work'; workId: string; title: string; url: string }
   | { kind: 'tag'; tagName: string; url: string }
@@ -27,7 +24,7 @@ export interface SearchResultItem {
   workId: string;
   title: string;
   url: string;
-  authority: number;
+  relevance: number;
 }
 
 export interface SearchResultsPayload {
@@ -82,27 +79,6 @@ export interface PropagationResultPayload {
   signals: Record<string, number[]>;
   iterations: number;
   deltas: Record<string, number>;
-}
-
-/** @deprecated Use PropagationInputPayload with signalIds: ['rank'] */
-export interface PPRInputPayload {
-  offsets: number[];
-  neighbors: number[];
-  edgeWeights: number[];
-  rowOutFractions?: number[];
-  seedIndices: number[];
-  negativeSeedIndices?: number[];
-  negativeWeight?: number;
-  alpha: number;
-  maxIterations: number;
-  tolerance: number;
-}
-
-/** @deprecated Use PropagationResultPayload */
-export interface PPRResultPayload {
-  authority: number[];
-  iterations: number;
-  delta: number;
 }
 
 export interface GraphTagMatch {
