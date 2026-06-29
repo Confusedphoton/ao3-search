@@ -126,6 +126,13 @@ async function allocateNodeIds(count: number): Promise<number> {
   return start;
 }
 
+function normalizeGraphNode(node: GraphNode): GraphNode {
+  return {
+    ...node,
+    wordCount: node.wordCount ?? null,
+  };
+}
+
 async function getNodeByKey(kind: NodeKind, key: string): Promise<GraphNode | null> {
   return tx(['keyIndex', 'nodes'], 'readonly', async (transaction) => {
     const indexStore = transaction.objectStore('keyIndex');
@@ -133,7 +140,8 @@ async function getNodeByKey(kind: NodeKind, key: string): Promise<GraphNode | nu
     const indexRecord = await idbGet<KeyIndexRecord>(indexStore, compound);
     if (!indexRecord) return null;
     const nodeStore = transaction.objectStore('nodes');
-    return idbGet<GraphNode>(nodeStore, indexRecord.nodeId);
+    const node = await idbGet<GraphNode>(nodeStore, indexRecord.nodeId);
+    return node ? normalizeGraphNode(node) : null;
   });
 }
 
@@ -176,6 +184,7 @@ async function upsertNode(
     kind,
     key: resolvedKey,
     title: patch.title,
+    wordCount: patch.wordCount ?? null,
     estimatedFreq: patch.estimatedFreq ?? 1,
     calibratedFreq: patch.calibratedFreq ?? null,
     explored: patch.explored ?? false,
@@ -223,6 +232,7 @@ function idbGetAll<T>(store: IDBObjectStore): Promise<T[]> {
 export async function mergeWorkPage(input: WorkMergeInput): Promise<GraphNode> {
   const workNode = await upsertNode(NodeKind.Work, input.workId, {
     title: input.title,
+    wordCount: input.wordCount ?? null,
     explored: input.explored ?? true,
   });
 
@@ -372,7 +382,7 @@ export async function searchTagNodes(query: string, limit = 8): Promise<GraphNod
 
 export async function loadGraphSnapshot(): Promise<GraphSnapshot> {
   return tx(['nodes', 'edges', 'authorEdges'], 'readonly', async (transaction) => {
-    const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
+    const nodes = (await idbGetAll<GraphNode>(transaction.objectStore('nodes'))).map(normalizeGraphNode);
     const edges = await idbGetAll<GraphEdge>(transaction.objectStore('edges'));
     const authorEdges = await idbGetAll<AuthorWorkEdge>(transaction.objectStore('authorEdges'));
     return { nodes, edges, authorEdges };
@@ -422,6 +432,7 @@ function mergeImportedNodeFields(existing: GraphNode, imported: GraphNode): Grap
   return {
     ...existing,
     title,
+    wordCount: imported.wordCount ?? existing.wordCount ?? null,
     estimatedFreq: Math.max(existing.estimatedFreq, imported.estimatedFreq),
     calibratedFreq,
     explored: existing.explored || imported.explored,

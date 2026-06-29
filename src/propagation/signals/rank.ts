@@ -2,7 +2,9 @@ import { NEGATIVE_SEED_WEIGHT } from '../../config/constants';
 import { pageRankUpdateRule } from '../rules/pageRankStep';
 import type { SeedContext, SignalInstance, SignalUpdateRule } from '../types';
 
-export const RANK_SIGNAL_ID = 'rank';
+export const RELEVANCE_SIGNAL_ID = 'relevance';
+/** @deprecated Use RELEVANCE_SIGNAL_ID */
+export const RANK_SIGNAL_ID = RELEVANCE_SIGNAL_ID;
 
 export function buildRankTeleport(context: SeedContext): Float64Array {
   const teleport = new Float64Array(context.nodeCount);
@@ -29,7 +31,7 @@ export const rankUpdateRule: SignalUpdateRule = pageRankUpdateRule;
 export function createRankSignal(context: SeedContext): SignalInstance {
   const nodeCount = context.nodeCount;
   return {
-    id: RANK_SIGNAL_ID,
+    id: RELEVANCE_SIGNAL_ID,
     state: new Float64Array(nodeCount),
     teleport: buildRankTeleport(context),
     buffer: new Float64Array(nodeCount),

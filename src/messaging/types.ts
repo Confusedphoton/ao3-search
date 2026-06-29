@@ -35,7 +35,36 @@ export interface SearchResultsPayload {
   requestsUsed: number;
 }
 
+export interface QueryPropagationInputPayload {
+  mode: 'query';
+  offsets: number[];
+  neighbors: number[];
+  edgeWeights: number[];
+  rowOutFractions?: number[];
+  seedIndices: number[];
+  negativeSeedIndices?: number[];
+  negativeWeight?: number;
+  workIndices: number[];
+  tagIndices: number[];
+  authorIndices: number[];
+  authorWorkIndexEdges: Array<{ workIndex: number; authorIndex: number }>;
+  wordCounts: Array<number | null>;
+  nodeKinds: number[];
+  alpha: number;
+  maxIterations: number;
+  tolerance: number;
+}
+
+export interface QueryPropagationResultPayload {
+  relevance: number[];
+  authority: number[];
+  precision: number[];
+  expectedInfo: number[];
+  iterations: { relevance: number; authority: number };
+}
+
 export interface PropagationInputPayload {
+  mode?: 'signals';
   offsets: number[];
   neighbors: number[];
   edgeWeights: number[];

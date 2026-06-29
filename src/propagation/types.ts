@@ -26,6 +26,7 @@ export interface SignalInstance {
   teleport: Float64Array;
   buffer: Float64Array;
   rule: SignalUpdateRule;
+  receiverWeights?: Float64Array;
 }
 
 export interface PropagationResult {

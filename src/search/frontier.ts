@@ -1,25 +1,39 @@
-import { FRONTIER_EPSILON } from '../config/constants';
+import { FRONTIER_EPSILON, MIN_FRONTIER_EXPECTED_INFO, PRECISION_EPS } from '../config/constants';
 import type { CSRGraph } from '../graph/csr';
 import { NodeKind } from '../graph/types';
 
 export interface FrontierNode {
   nodeId: number;
   index: number;
+  relevance: number;
   authority: number;
+  precision: number;
+  expectedInfo: number;
 }
 
-export function buildFrontier(csr: CSRGraph, authority: Float64Array): FrontierNode[] {
+export function buildFrontier(
+  csr: CSRGraph,
+  relevance: Float64Array,
+  authority: Float64Array,
+  precision: Float64Array,
+): FrontierNode[] {
   const frontier: FrontierNode[] = [];
   for (let index = 0; index < csr.nodeByIndex.length; index++) {
     const node = csr.nodeByIndex[index];
     if (node.explored) continue;
+    const rel = relevance[index];
+    const auth = authority[index];
+    const prec = precision[index];
     frontier.push({
       nodeId: node.id,
       index,
-      authority: authority[index],
+      relevance: rel,
+      authority: auth,
+      precision: prec,
+      expectedInfo: (rel * auth) / (prec + PRECISION_EPS),
     });
   }
-  return frontier.sort((a, b) => b.authority - a.authority);
+  return frontier.sort((a, b) => b.expectedInfo - a.expectedInfo);
 }
 
 export function pickNextFrontier(frontier: FrontierNode[]): FrontierNode | null {
@@ -31,8 +45,13 @@ export function pickNextFrontier(frontier: FrontierNode[]): FrontierNode | null 
   return frontier[0];
 }
 
+export function maxFrontierExpectedInfo(frontier: FrontierNode[]): number {
+  return frontier[0]?.expectedInfo ?? 0;
+}
+
+/** @deprecated Use maxFrontierExpectedInfo */
 export function maxFrontierAuthority(frontier: FrontierNode[]): number {
-  return frontier[0]?.authority ?? 0;
+  return maxFrontierExpectedInfo(frontier);
 }
 
 export function isWorkNode(csr: CSRGraph, nodeId: number): boolean {

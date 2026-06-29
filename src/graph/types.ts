@@ -9,6 +9,7 @@ export interface GraphNode {
   kind: NodeKind;
   key: string;
   title?: string;
+  wordCount: number | null;
   estimatedFreq: number;
   calibratedFreq: number | null;
   explored: boolean;
@@ -88,6 +89,7 @@ export interface WorkMergeInput {
   title: string;
   tags: string[];
   authors: WorkAuthorInput[];
+  wordCount?: number | null;
   explored?: boolean;
 }
 

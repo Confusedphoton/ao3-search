@@ -10,6 +10,13 @@ export const MAX_FETCH_RETRIES = 3;
 
 export const EXPANSION_BUDGET = 20;
 export const MIN_FRONTIER_AUTHORITY = 1e-5;
+/** @deprecated Use MIN_FRONTIER_EXPECTED_INFO */
+export const MIN_FRONTIER_EXPECTED_INFO = MIN_FRONTIER_AUTHORITY;
+
+export const GLOBAL_MEDIAN_WORD_COUNT = 2500;
+export const PRECISION_EPS = 1e-9;
+export const TAG_FLUX_EPS = 1e-12;
+export const TAG_PRIOR_FALLBACK_LOG = 0;
 export const FRONTIER_EPSILON = 0.05;
 export const TOP_RESULTS = 25;
 
@@ -19,7 +26,7 @@ export const MAX_NEGATIVE_SEEDS = 10;
 export const NEGATIVE_SEED_WEIGHT = 1;
 
 export const DB_NAME = 'ao3-search';
-export const DB_VERSION = 4;
+export const DB_VERSION = 5;
 
 export const GRAPH_EXPORT_VERSION = 1;
 

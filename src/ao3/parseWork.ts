@@ -1,4 +1,4 @@
-import { selectors } from './selectors';
+import { selectors, wordCountPattern } from './selectors';
 import type { ListedWorkAuthor, WorkPageData } from './types';
 import { parseAuthorKeyFromHref, parseWorkIdFromUrl, workUrl } from './types';
 
@@ -40,12 +40,17 @@ export function parseWorkPage(doc: Document, url: string): WorkPageData | null {
     .map((el) => el.textContent?.trim() ?? '')
     .filter(Boolean);
 
+  const wordsEl = doc.querySelector(selectors.workWords);
+  const wordsMatch = wordsEl?.textContent?.match(wordCountPattern);
+  const wordCount = wordsMatch ? Number.parseInt(wordsMatch[1].replace(/,/g, ''), 10) : null;
+
   return {
     kind: 'work',
     workId,
     title,
     tags,
     authors: parseAuthorsFromDocument(doc),
+    wordCount: Number.isFinite(wordCount) ? wordCount : null,
     url: workUrl(workId),
   };
 }

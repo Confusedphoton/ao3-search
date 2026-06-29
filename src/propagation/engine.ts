@@ -17,7 +17,9 @@ export function runPropagation(
     let maxDelta = 0;
 
     for (const signal of signals) {
-      spreadMass(graph, signal.state, signal.buffer);
+      spreadMass(graph, signal.state, signal.buffer, {
+        receiverWeights: signal.receiverWeights,
+      });
       const delta = signal.rule.applyIteration(
         signal.state,
         signal.buffer,

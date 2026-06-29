@@ -193,6 +193,7 @@ async function ingestPageData(payload: PageData): Promise<void> {
       title: payload.title,
       tags: payload.tags,
       authors: payload.authors,
+      wordCount: payload.wordCount,
       explored: true,
     });
   } else if (payload.kind === 'tag') {

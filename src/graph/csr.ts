@@ -12,6 +12,7 @@ export interface CSRGraph {
   workIndices: number[];
   tagIndices: number[];
   authorIndices: number[];
+  authorWorkIndexEdges: Array<{ workIndex: number; authorIndex: number }>;
   indexByNodeId: Map<number, number>;
   nodeByIndex: GraphNode[];
 }
@@ -52,6 +53,7 @@ export function buildCSR(snapshot: GraphSnapshot): CSRGraph {
   }
 
   const worksByAuthor = new Map<number, number[]>();
+  const authorWorkIndexEdges: Array<{ workIndex: number; authorIndex: number }> = [];
   for (const edge of snapshot.authorEdges) {
     if (!worksByAuthor.has(edge.authorNodeId)) worksByAuthor.set(edge.authorNodeId, []);
     worksByAuthor.get(edge.authorNodeId)!.push(edge.workNodeId);
@@ -71,6 +73,7 @@ export function buildCSR(snapshot: GraphSnapshot): CSRGraph {
 
     adjacency[workIndex].push({ to: authorIndex, weight: wToA });
     adjacency[authorIndex].push({ to: workIndex, weight: aToW });
+    authorWorkIndexEdges.push({ workIndex, authorIndex });
   }
 
   const offsets: number[] = [0];
@@ -114,6 +117,7 @@ export function buildCSR(snapshot: GraphSnapshot): CSRGraph {
     workIndices,
     tagIndices,
     authorIndices,
+    authorWorkIndexEdges,
     indexByNodeId,
     nodeByIndex,
   };

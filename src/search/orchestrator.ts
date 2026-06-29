@@ -1,7 +1,7 @@
 import type { NegativeSeed, PositiveSeed, SearchProgressPayload, SearchResultItem } from '../messaging/types';
 import {
   EXPANSION_BUDGET,
-  MIN_FRONTIER_AUTHORITY,
+  MIN_FRONTIER_EXPECTED_INFO,
   NEGATIVE_SEED_WEIGHT,
   PPR_ALPHA,
   PPR_MAX_ITERATIONS,
@@ -16,14 +16,11 @@ import {
 } from '../graph/csr';
 import { NodeKind } from '../graph/types';
 import { workUrl } from '../ao3';
-import {
-  CONFIDENCE_SIGNAL_ID,
-  RANK_SIGNAL_ID,
-} from '../propagation';
-import { runPropagationViaWorker, closeComputeHost } from '../compute/host';
+import { queryInputFromCsr } from '../propagation';
+import { runQueryPropagationViaWorker, closeComputeHost } from '../compute/host';
 import { loadGraphSnapshot } from '../storage/db';
 import { RequestScheduler } from '../scheduler/scheduler';
-import { buildFrontier, maxFrontierAuthority, pickNextFrontier } from './frontier';
+import { buildFrontier, maxFrontierExpectedInfo, pickNextFrontier } from './frontier';
 
 export interface SearchRunResult {
   results: SearchResultItem[];
@@ -99,12 +96,12 @@ export class SearchOrchestrator {
 
     const emitPreview = (
       csr: CSRGraph,
-      authority: Float64Array | number[],
+      relevance: Float64Array | number[],
       payload: Omit<SearchProgressPayload, 'previewResults'>,
     ): void => {
       onProgress({
         ...payload,
-        previewResults: rankWorks(csr, authority, excludeWorkIds, seedTitleMap),
+        previewResults: rankWorks(csr, relevance, excludeWorkIds, seedTitleMap),
       });
     };
 
@@ -135,24 +132,23 @@ export class SearchOrchestrator {
         message: 'Running Personalized PageRank…',
       });
 
-      const propagation = await runPropagationViaWorker({
-        offsets: csr.offsets,
-        neighbors: csr.neighbors,
-        edgeWeights: csr.edgeWeights,
-        rowOutFractions: [...csr.rowOutFractions],
-        seedIndices,
-        negativeSeedIndices,
-        negativeWeight: NEGATIVE_SEED_WEIGHT,
-        signalIds: [RANK_SIGNAL_ID, CONFIDENCE_SIGNAL_ID],
-        alpha: PPR_ALPHA,
-        maxIterations: PPR_MAX_ITERATIONS,
-        tolerance: PPR_TOLERANCE,
+      const propagation = await runQueryPropagationViaWorker({
+        ...queryInputFromCsr(csr, {
+          seedIndices,
+          negativeSeedIndices,
+          negativeWeight: NEGATIVE_SEED_WEIGHT,
+          alpha: PPR_ALPHA,
+          maxIterations: PPR_MAX_ITERATIONS,
+          tolerance: PPR_TOLERANCE,
+        }),
       });
 
-      const authority = Float64Array.from(propagation.signals[RANK_SIGNAL_ID] ?? []);
-      const frontier = buildFrontier(csr, authority);
+      const relevance = Float64Array.from(propagation.relevance);
+      const authority = Float64Array.from(propagation.authority);
+      const precision = Float64Array.from(propagation.precision);
+      const frontier = buildFrontier(csr, relevance, authority, precision);
 
-      emitPreview(csr, authority, {
+      emitPreview(csr, relevance, {
         phase: expansion === 0 ? 'ranking' : 'expanding',
         requestsUsed,
         expansionBudget: EXPANSION_BUDGET,
@@ -161,7 +157,7 @@ export class SearchOrchestrator {
       });
 
       if (frontier.length === 0) break;
-      if (maxFrontierAuthority(frontier) < MIN_FRONTIER_AUTHORITY) break;
+      if (maxFrontierExpectedInfo(frontier) < MIN_FRONTIER_EXPECTED_INFO) break;
 
       const next = pickNextFrontier(frontier);
       if (!next) break;
@@ -177,24 +173,21 @@ export class SearchOrchestrator {
     const finalCsr = buildCSR(finalSnapshot);
     const finalSeeds = seedIndicesForPositiveSeeds(finalCsr, positiveKeys);
     const finalNegativeSeeds = seedIndicesForNegativeSeeds(finalCsr, negativeKeys);
-    const finalPropagation = await runPropagationViaWorker({
-      offsets: finalCsr.offsets,
-      neighbors: finalCsr.neighbors,
-      edgeWeights: finalCsr.edgeWeights,
-      rowOutFractions: [...finalCsr.rowOutFractions],
-      seedIndices: finalSeeds,
-      negativeSeedIndices: finalNegativeSeeds,
-      negativeWeight: NEGATIVE_SEED_WEIGHT,
-      signalIds: [RANK_SIGNAL_ID, CONFIDENCE_SIGNAL_ID],
-      alpha: PPR_ALPHA,
-      maxIterations: PPR_MAX_ITERATIONS,
-      tolerance: PPR_TOLERANCE,
+    const finalPropagation = await runQueryPropagationViaWorker({
+      ...queryInputFromCsr(finalCsr, {
+        seedIndices: finalSeeds,
+        negativeSeedIndices: finalNegativeSeeds,
+        negativeWeight: NEGATIVE_SEED_WEIGHT,
+        alpha: PPR_ALPHA,
+        maxIterations: PPR_MAX_ITERATIONS,
+        tolerance: PPR_TOLERANCE,
+      }),
     });
 
     await closeComputeHost();
 
-    const authority = Float64Array.from(finalPropagation.signals[RANK_SIGNAL_ID] ?? []);
-    const results = rankWorks(finalCsr, authority, excludeWorkIds, seedTitleMap);
+    const relevance = Float64Array.from(finalPropagation.relevance);
+    const results = rankWorks(finalCsr, relevance, excludeWorkIds, seedTitleMap);
 
     onProgress({
       phase: 'done',
@@ -226,14 +219,14 @@ function resolveWorkTitle(
 
 function rankWorks(
   csr: CSRGraph,
-  authority: Float64Array | number[],
+  relevance: Float64Array | number[],
   excludeWorkIds: Set<string>,
   seedTitleMap: Map<string, string>,
 ): SearchResultItem[] {
   return csr.workIndices
     .map((index) => ({
       node: csr.nodeByIndex[index],
-      score: authority[index],
+      score: relevance[index],
     }))
     .filter((item) => item.node.kind === NodeKind.Work && !excludeWorkIds.has(item.node.key))
     .sort((a, b) => b.score - a.score)

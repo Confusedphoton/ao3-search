@@ -21,6 +21,7 @@ export { buildPropagationGraph, buildPropagationGraphFromArrays } from './queryG
 export { applyPageRankStep, l1Normalize, pageRankUpdateRule } from './rules/pageRankStep';
 export { buildTransitionWeights } from './queryGraph';
 export {
+  RELEVANCE_SIGNAL_ID,
   RANK_SIGNAL_ID,
   buildRankTeleport,
   createRankSeedContext,
@@ -28,11 +29,31 @@ export {
   rankUpdateRule,
 } from './signals/rank';
 export {
-  CONFIDENCE_SIGNAL_ID,
-  buildConfidenceTeleport,
-  confidenceUpdateRule,
-  createConfidenceSignal,
-} from './signals/confidence';
+  AUTHORITY_SIGNAL_ID,
+  authorityUpdateRule,
+  createAuthoritySignal,
+} from './signals/authority';
+export {
+  buildPriorLog,
+  buildTeleportFromPriorLog,
+  computeAuthorPriorLog,
+  computeWorkPriorLog,
+  mergeTagPriorLog,
+  workPriorLog,
+} from './priors';
+export type { PriorGraph } from './priors';
+export { computeTagPriorLogFromFlux } from './tagFlux';
+export {
+  computeExpectedInfo,
+  computePrecision,
+  precisionPriorFromLog,
+  spreadPrecisionMass,
+} from './precision';
+export {
+  queryInputFromCsr,
+  runQueryPropagation,
+} from './runQueryPropagation';
+export type { QueryPropagationInput, QueryPropagationResult } from './runQueryPropagation';
 
 export interface RankPropagationInput {
   offsets: number[];
@@ -48,7 +69,9 @@ export interface RankPropagationInput {
 }
 
 export interface RankPropagationResult {
+  /** @deprecated Use relevance */
   authority: Float64Array;
+  relevance: Float64Array;
   iterations: number;
   delta: number;
 }
@@ -87,7 +110,7 @@ export function runRankPropagation(input: RankPropagationInput): RankPropagation
   const authority = new Float64Array(nodeCount);
 
   if (seedIndices.length === 0 && negativeSeedIndices.length === 0) {
-    return { authority, iterations: 0, delta: 0 };
+    return { authority, relevance: authority, iterations: 0, delta: 0 };
   }
 
   const graph = buildPropagationGraphFromArrays(
@@ -106,8 +129,11 @@ export function runRankPropagation(input: RankPropagationInput): RankPropagation
   const params: PropagationParams = { alpha, maxIterations, tolerance };
   const result = runPropagation(graph, [createRankSignal(context)], params);
 
+  const relevance = result.signals[RANK_SIGNAL_ID] ?? authority;
+
   return {
-    authority: result.signals[RANK_SIGNAL_ID] ?? authority,
+    authority: relevance,
+    relevance,
     iterations: result.iterations,
     delta: result.deltas[RANK_SIGNAL_ID] ?? 0,
   };

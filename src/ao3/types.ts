@@ -20,6 +20,7 @@ export interface WorkPageData {
   title: string;
   tags: string[];
   authors: Array<{ key: string; displayName: string }>;
+  wordCount: number | null;
   url: string;
 }
 

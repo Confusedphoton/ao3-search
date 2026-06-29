@@ -29,12 +29,14 @@ function parseGraphNode(value: unknown): GraphNode | null {
   if (record.calibratedFreq != null && typeof record.calibratedFreq !== 'number') return null;
   if (typeof record.explored !== 'boolean') return null;
   if (record.title != null && typeof record.title !== 'string') return null;
+  if (record.wordCount != null && typeof record.wordCount !== 'number') return null;
 
   return {
     id: record.id,
     kind: record.kind,
     key: record.key,
     title: typeof record.title === 'string' ? record.title : undefined,
+    wordCount: typeof record.wordCount === 'number' ? record.wordCount : null,
     estimatedFreq: record.estimatedFreq,
     calibratedFreq: record.calibratedFreq ?? null,
     explored: record.explored,

@@ -11,6 +11,7 @@ const workHtml = `
 <html><body>
   <h2 class="title heading">Test Work</h2>
   <dl class="work meta group">
+    <dd class="words">12,345 Words</dd>
     <dd class="users"><a href="/users/AuthorName">Author Name</a></dd>
     <dd class="tags"><a class="tag" href="/tags/Harry%20Potter">Harry Potter</a></dd>
     <dd class="tags"><a class="tag" href="/tags/Fluff">Fluff</a></dd>
@@ -71,6 +72,7 @@ describe('AO3 parsers', () => {
       kind: 'work',
       workId: '42',
       title: 'Test Work',
+      wordCount: 12345,
       tags: ['Harry Potter', 'Fluff'],
       authors: [{ key: 'AuthorName', displayName: 'Author Name' }],
     });

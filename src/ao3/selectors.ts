@@ -1,5 +1,6 @@
 export const selectors = {
   workMeta: 'dl.work.meta.group',
+  workWords: 'dl.work.meta.group dd.words',
   workTags: 'dl.work.meta.group dd.tags a.tag',
   workAuthors: 'dl.work.meta.group dd.users a[href*="/users/"]',
   workTitle: 'h2.title.heading, h2.title, h1.title, #workskin h2.title.heading',
@@ -12,3 +13,4 @@ export const selectors = {
 } as const;
 
 export const tagCountPattern = /([\d,]+)\s+Works?/i;
+export const wordCountPattern = /([\d,]+)\s+Words?/i;

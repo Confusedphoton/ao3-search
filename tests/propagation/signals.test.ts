@@ -21,9 +21,9 @@ describe('rank signal', () => {
     expect(teleport[1]).toBe(0);
   });
 
-  it('creates a signal instance with rank id', () => {
+  it('creates a signal instance with relevance id', () => {
     const signal = createRankSignal(createRankSeedContext(3, [1]));
-    expect(signal.id).toBe('rank');
+    expect(signal.id).toBe('relevance');
     expect(signal.state.length).toBe(3);
     expect(signal.teleport[1]).toBe(1);
   });
