@@ -6,6 +6,7 @@ import type {
   GraphNode,
   GraphSnapshot,
   ListedWorkInput,
+  SearchMergeInput,
   StatsTagRecord,
   TagMergeInput,
   WorkMergeInput,
@@ -304,23 +305,19 @@ export async function mergeAuthorPage(input: AuthorMergeInput): Promise<GraphNod
   return authorNode;
 }
 
-/** Merge a work discovered from a tag or author listing blurb (partial data, not explored). */
-async function mergeListedWork(
-  work: ListedWorkInput,
-  hub:
-    | { kind: 'tag'; tagNodeId: number }
-    | { kind: 'author'; authorNodeId: number },
-): Promise<GraphNode> {
+export async function mergeSearchPage(input: SearchMergeInput): Promise<void> {
+  for (const work of input.works) {
+    await mergeDiscoveredWork(work);
+  }
+}
+
+/** Merge a work discovered from a listing blurb (partial data, not explored). */
+async function mergeDiscoveredWork(work: ListedWorkInput): Promise<GraphNode> {
   const workNode = await upsertNode(NodeKind.Work, work.workId, {
     title: work.title,
+    ...(work.wordCount != null ? { wordCount: work.wordCount } : {}),
     explored: false,
   });
-
-  if (hub.kind === 'tag') {
-    await addEdge(workNode.id, hub.tagNodeId);
-  } else {
-    await addAuthorEdge(workNode.id, hub.authorNodeId);
-  }
 
   for (const tagName of work.tags ?? []) {
     const tagNode = await upsertNode(NodeKind.Tag, tagName, {
@@ -335,6 +332,24 @@ async function mergeListedWork(
       estimatedFreq: 1,
     });
     await addAuthorEdge(workNode.id, authorNode.id);
+  }
+
+  return workNode;
+}
+
+/** Merge a work discovered from a tag or author listing blurb (partial data, not explored). */
+async function mergeListedWork(
+  work: ListedWorkInput,
+  hub:
+    | { kind: 'tag'; tagNodeId: number }
+    | { kind: 'author'; authorNodeId: number },
+): Promise<GraphNode> {
+  const workNode = await mergeDiscoveredWork(work);
+
+  if (hub.kind === 'tag') {
+    await addEdge(workNode.id, hub.tagNodeId);
+  } else {
+    await addAuthorEdge(workNode.id, hub.authorNodeId);
   }
 
   return workNode;

@@ -98,6 +98,11 @@ export interface ListedWorkInput {
   title: string;
   tags?: string[];
   authors?: WorkAuthorInput[];
+  wordCount?: number | null;
+}
+
+export interface SearchMergeInput {
+  works: ListedWorkInput[];
 }
 
 export interface TagMergeInput {

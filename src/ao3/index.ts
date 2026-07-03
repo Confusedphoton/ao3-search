@@ -4,3 +4,4 @@ export { parseWorkPage, parseWorkPageFromHtml, parseAuthorsFromDocument, parseAu
 export { parseListedWorks, parseWorkBlurb } from './parseListings';
 export { parseTagPage, parseTagPageFromHtml } from './parseTag';
 export { parseAuthorPage, parseAuthorPageFromHtml } from './parseAuthor';
+export { parseSearchPage, parseSearchPageFromHtml } from './parseSearch';

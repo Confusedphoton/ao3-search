@@ -1,6 +1,6 @@
 import { AO3_ORIGIN } from '../config/constants';
 
-export type PageKind = 'work' | 'tag' | 'author' | 'unknown';
+export type PageKind = 'work' | 'tag' | 'author' | 'search' | 'unknown';
 
 export interface ListedWorkAuthor {
   key: string;
@@ -12,6 +12,7 @@ export interface ListedWork {
   title: string;
   tags: string[];
   authors: ListedWorkAuthor[];
+  wordCount: number | null;
 }
 
 export interface WorkPageData {
@@ -41,7 +42,13 @@ export interface AuthorPageData {
   url: string;
 }
 
-export type PageData = WorkPageData | TagPageData | AuthorPageData;
+export interface SearchPageData {
+  kind: 'search';
+  works: ListedWork[];
+  url: string;
+}
+
+export type PageData = WorkPageData | TagPageData | AuthorPageData | SearchPageData;
 
 export function workUrl(workId: string): string {
   return `${AO3_ORIGIN}/works/${workId}`;
@@ -89,8 +96,17 @@ export function parseAuthorKeyFromUrl(url: string): string | null {
   return key;
 }
 
+export function isSearchResultsUrl(url: string): boolean {
+  try {
+    return new URL(url).pathname === '/works/search';
+  } catch {
+    return /\/works\/search(?:[/?#]|$)/.test(url);
+  }
+}
+
 export function detectPageKind(url: string): PageKind {
   if (parseWorkIdFromUrl(url)) return 'work';
+  if (isSearchResultsUrl(url)) return 'search';
   if (parseTagNameFromUrl(url)) return 'tag';
   if (parseAuthorKeyFromUrl(url)) return 'author';
   return 'unknown';

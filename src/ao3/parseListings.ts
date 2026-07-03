@@ -7,6 +7,16 @@ function parseWorkIdFromHref(href: string): string | null {
   return match ? match[1] : null;
 }
 
+function parseWordCountFromBlurb(blurb: Element): number | null {
+  const wordsEl = blurb.querySelector(selectors.workBlurbWords);
+  const text = wordsEl?.textContent?.trim();
+  if (!text) return null;
+  const match = text.match(/^([\d,]+)/);
+  if (!match) return null;
+  const count = Number.parseInt(match[1].replace(/,/g, ''), 10);
+  return Number.isFinite(count) ? count : null;
+}
+
 function parseTagsFromBlurb(blurb: Element): string[] {
   const tags: string[] = [];
   const seen = new Set<string>();
@@ -36,6 +46,7 @@ export function parseWorkBlurb(blurb: Element): ListedWork | null {
     title,
     tags: parseTagsFromBlurb(blurb),
     authors: parseAuthorsFromElement(blurb, selectors.workBlurbAuthors),
+    wordCount: parseWordCountFromBlurb(blurb),
   };
 }
 

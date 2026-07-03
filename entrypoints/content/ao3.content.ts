@@ -1,5 +1,5 @@
 import { detectPageKind } from '@/src/ao3/types';
-import { parseAuthorPage, parseTagPage, parseWorkPage } from '@/src/ao3';
+import { parseAuthorPage, parseSearchPage, parseTagPage, parseWorkPage } from '@/src/ao3';
 import { sendMessage } from '@/src/messaging/protocol';
 
 const buttonStyle =
@@ -18,11 +18,17 @@ export default defineContentScript({
         ? parseWorkPage(document, url)
         : kind === 'tag'
           ? parseTagPage(document, url)
-          : parseAuthorPage(document, url);
+          : kind === 'author'
+            ? parseAuthorPage(document, url)
+            : kind === 'search'
+              ? parseSearchPage(document, url)
+              : null;
 
     if (!payload) return;
 
     void sendMessage({ type: 'PageDataIngested', payload });
+
+    if (kind !== 'work' && kind !== 'tag' && kind !== 'author') return;
 
     const container = document.createElement('div');
     container.style.cssText =

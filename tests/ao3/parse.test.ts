@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   parseAuthorPageFromHtml,
   parseListedWorks,
+  parseSearchPageFromHtml,
   parseTagPageFromHtml,
   parseWorkPageFromHtml,
 } from '@/src/ao3';
-import { parseAuthorKeyFromUrl } from '@/src/ao3/types';
+import { isSearchResultsUrl, parseAuthorKeyFromUrl } from '@/src/ao3/types';
 
 const workHtml = `
 <html><body>
@@ -92,12 +93,14 @@ describe('AO3 parsers', () => {
           title: 'Story',
           tags: ['Harry Potter', 'Draco Malfoy/Harry Potter', 'Fluff'],
           authors: [{ key: 'WriterOne', displayName: 'Writer One' }],
+          wordCount: null,
         },
         {
           workId: '67890',
           title: 'Other',
           tags: [],
           authors: [],
+          wordCount: null,
         },
       ],
     });
@@ -118,6 +121,7 @@ describe('AO3 parsers', () => {
           title: 'Fic A',
           tags: ['Marvel'],
           authors: [{ key: 'AuthorName', displayName: 'Author Name' }],
+          wordCount: null,
         },
         {
           workId: '22222',
@@ -127,6 +131,7 @@ describe('AO3 parsers', () => {
             { key: 'AuthorName', displayName: 'Author Name' },
             { key: 'CoAuthor', displayName: 'Co Author' },
           ],
+          wordCount: null,
         },
       ],
     });
@@ -152,8 +157,55 @@ describe('AO3 parsers', () => {
         title: 'Title',
         tags: ['Fluff'],
         authors: [],
+        wordCount: null,
       },
     ]);
+  });
+
+  it('parses search listing pages with blurbs including word counts', () => {
+    const searchHtml = `
+      <html><body>
+        <ol class="work index group">
+          <li class="work blurb">
+            <h4 class="heading">
+              <a href="/works/49557145">Fluff, Fluff, Fluff...</a>
+              by <a rel="author" href="/users/brhmsheelshirebf/pseuds/brhmsheelshirebf">brhmsheelshirebf</a>
+            </h4>
+            <h5 class="fandoms heading"><a class="tag" href="/tags/Marvel%20Cinematic%20Universe/works">Marvel Cinematic Universe</a></h5>
+            <ul class="tags commas">
+              <li class="freeforms"><a class="tag" href="/tags/Fluff/works">Fluff</a></li>
+            </ul>
+            <dl class="stats">
+              <dt class="words">Words:</dt>
+              <dd class="words">1,355</dd>
+            </dl>
+          </li>
+        </ol>
+      </body></html>`;
+    const parsed = parseSearchPageFromHtml(
+      searchHtml,
+      'https://archiveofourown.org/works/search?work_search%5Bquery%5D=fluff',
+    );
+    expect(parsed).toMatchObject({
+      kind: 'search',
+      works: [
+        {
+          workId: '49557145',
+          title: 'Fluff, Fluff, Fluff...',
+          tags: ['Marvel Cinematic Universe', 'Fluff'],
+          authors: [{ key: 'brhmsheelshirebf/pseuds/brhmsheelshirebf', displayName: 'brhmsheelshirebf' }],
+          wordCount: 1355,
+        },
+      ],
+    });
+  });
+
+  it('detects AO3 work search result URLs', () => {
+    expect(
+      isSearchResultsUrl('https://archiveofourown.org/works/search?work_search%5Bquery%5D=fluff'),
+    ).toBe(true);
+    expect(isSearchResultsUrl('https://archiveofourown.org/works/12345')).toBe(false);
+    expect(isSearchResultsUrl('https://archiveofourown.org/tags/Fluff/works')).toBe(false);
   });
 
   it('parses pseud author keys from work links', () => {

@@ -9,7 +9,7 @@ import type {
   SearchResultItem,
 } from '@/src/messaging/types';
 import { MAX_NEGATIVE_SEEDS, MAX_SEEDS } from '@/src/config/constants';
-import { mergeAuthorPage, mergeTagPage, mergeWorkPage, searchTagNodes } from '@/src/storage/db';
+import { mergeAuthorPage, mergeSearchPage, mergeTagPage, mergeWorkPage, searchTagNodes } from '@/src/storage/db';
 import { exportGraph, getGraphStats, importGraph, parseGraphExport } from '@/src/storage/graphIo';
 import { resolveGraphTagName } from '@/src/storage/tagCanonical';
 import { broadcast, onMessage } from '@/src/messaging/protocol';
@@ -185,6 +185,10 @@ async function readTabPageInfo(tabId: number): Promise<{
   };
 }
 
+async function publishGraphStats(): Promise<void> {
+  await broadcast({ type: 'GraphStats', stats: await getGraphStats() });
+}
+
 async function ingestPageData(payload: PageData): Promise<void> {
   if (searching) return;
   if (payload.kind === 'work') {
@@ -203,6 +207,8 @@ async function ingestPageData(payload: PageData): Promise<void> {
       works: payload.works,
       explored: true,
     });
+  } else if (payload.kind === 'search') {
+    await mergeSearchPage({ works: payload.works });
   } else {
     await mergeAuthorPage({
       authorKey: payload.authorKey,
@@ -212,6 +218,7 @@ async function ingestPageData(payload: PageData): Promise<void> {
       explored: true,
     });
   }
+  await publishGraphStats();
 }
 
 function isPositiveWorkSeed(workId: string): boolean {
@@ -599,6 +606,7 @@ async function runSearch(search: SearchOrchestrator): Promise<void> {
     searching = false;
     orchestrator = null;
     await publishState();
+    await publishGraphStats();
   }
 }
 
