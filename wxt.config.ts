@@ -13,7 +13,7 @@ export default defineConfig({
   manifest: {
     name: "AO3 Graph Search",
     description:
-      "Discover AO3 works through graph-based baysian search using soft relational tagging.",
+      "Discover new AO3 works through graph-based baysian search.",
     permissions: ["storage", "tabs", "scripting"],
     host_permissions: ["https://archiveofourown.org/*"],
     browser_specific_settings: {
@@ -21,7 +21,7 @@ export default defineConfig({
         // Firefox requires data_collection_permissions but we have none.
         data_collection_permissions: {},
         // Prevent graph resets and re-imports on every reload.
-        id: "theseus_rank@localdev",
+        id: "ao3graphsearch@confusedphoton",
       },
     },
   },
