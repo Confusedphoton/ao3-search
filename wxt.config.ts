@@ -18,8 +18,10 @@ export default defineConfig({
     host_permissions: ["https://archiveofourown.org/*"],
     browser_specific_settings: {
       gecko: {
-        // Firefox requires data_collection_permissions but we have none.
-        data_collection_permissions: {},
+        // AMO requires declaring data collection; this extension stores data locally only.
+        data_collection_permissions: {
+          required: ["none"],
+        },
         // Prevent graph resets and re-imports on every reload.
         id: "ao3graphsearch@confusedphoton",
       },
