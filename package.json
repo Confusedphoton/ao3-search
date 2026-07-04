@@ -11,12 +11,14 @@
     "build:firefox": "wxt build -b firefox",
     "zip": "wxt zip",
     "zip:firefox": "wxt zip -b firefox",
+    "lint:firefox": "npm run build:firefox && addons-linter .output/firefox-mv3",
     "compile": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "postinstall": "wxt prepare"
   },
   "devDependencies": {
+    "addons-linter": "^10.7.0",
     "@wxt-dev/auto-icons": "^1.1.1",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.10.6",
