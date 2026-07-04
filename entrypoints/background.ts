@@ -8,7 +8,7 @@ import type {
   SearchProgressPayload,
   SearchResultItem,
 } from '@/src/messaging/types';
-import { MAX_NEGATIVE_SEEDS, MAX_SEEDS } from '@/src/config/constants';
+import { EXPANSION_BUDGET, MAX_NEGATIVE_SEEDS, MAX_SEEDS } from '@/src/config/constants';
 import { mergeAuthorPage, mergeSearchPage, mergeTagPage, mergeWorkPage, searchTagNodes } from '@/src/storage/db';
 import { exportGraph, getGraphStats, importGraph, parseGraphExport } from '@/src/storage/graphIo';
 import { resolveGraphTagName } from '@/src/storage/tagCanonical';
@@ -51,8 +51,13 @@ async function loadPersistedState(): Promise<void> {
     lastResults = stored.lastResults as SearchResultItem[];
   }
   if (stored.lastProgress && typeof stored.lastProgress === 'object') {
-    lastProgress = stored.lastProgress as SearchProgressPayload;
+    lastProgress = normalizeStoredProgress(stored.lastProgress as SearchProgressPayload);
   }
+}
+
+function normalizeStoredProgress(progress: SearchProgressPayload): SearchProgressPayload {
+  if (progress.expansionBudget > 0) return progress;
+  return { ...progress, expansionBudget: EXPANSION_BUDGET };
 }
 
 function ensureReady(): Promise<void> {
@@ -128,7 +133,8 @@ function stateUpdate(
   searchingNow: boolean,
   progress: SearchProgressPayload | null = null,
 ): ExtensionMessage {
-  const effectiveProgress = progress ?? (searchingNow ? null : lastProgress);
+  const rawProgress = progress ?? (searchingNow ? null : lastProgress);
+  const effectiveProgress = rawProgress ? normalizeStoredProgress(rawProgress) : null;
   return {
     type: 'StateUpdate',
     seeds: [...seeds],
@@ -580,7 +586,7 @@ async function runSearch(search: SearchOrchestrator): Promise<void> {
     lastProgress = {
       phase: 'done',
       requestsUsed,
-      expansionBudget: 0,
+      expansionBudget: EXPANSION_BUDGET,
       frontierSize: 0,
       message: `Found ${results.length} works`,
       previewResults: results,
@@ -597,7 +603,7 @@ async function runSearch(search: SearchOrchestrator): Promise<void> {
       payload: {
         phase: 'error',
         requestsUsed: lastRequestsUsed,
-        expansionBudget: 0,
+        expansionBudget: EXPANSION_BUDGET,
         frontierSize: 0,
         message: err instanceof Error ? err.message : String(err),
       },

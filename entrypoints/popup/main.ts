@@ -12,7 +12,7 @@ import { NodeKind } from '@/src/graph/types';
 import { isExtensionMessage } from '@/src/messaging/types';
 import { sendMessage } from '@/src/messaging/protocol';
 import { authorWorksUrl, tagWorksUrl } from '@/src/ao3/types';
-import { MAX_NEGATIVE_SEEDS, MAX_SEEDS, MIN_SEEDS } from '@/src/config/constants';
+import { EXPANSION_BUDGET, MAX_NEGATIVE_SEEDS, MAX_SEEDS, MIN_SEEDS } from '@/src/config/constants';
 import { parseGraphExport } from '@/src/storage/graphIo';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -336,6 +336,7 @@ function bindEvents(): void {
   document.querySelector('#start-search')?.addEventListener('click', () => {
     statusHint = '';
     results = [];
+    progress = null;
     render();
     void dispatch({ type: 'StartSearch' });
   });
@@ -514,7 +515,10 @@ function applyState(message: ExtensionMessage): void {
     seeds = message.seeds;
     negativeSeeds = message.negativeSeeds;
     searching = message.searching;
-    progress = message.progress;
+    progress =
+      message.progress && message.progress.expansionBudget === 0
+        ? { ...message.progress, expansionBudget: EXPANSION_BUDGET }
+        : message.progress;
     results = message.results;
     if (!message.results.length) {
       applyPreviewResults(message.progress?.previewResults);
@@ -530,7 +534,7 @@ function applyState(message: ExtensionMessage): void {
     progress = {
       phase: 'done',
       requestsUsed: message.payload.requestsUsed,
-      expansionBudget: 0,
+      expansionBudget: EXPANSION_BUDGET,
       frontierSize: 0,
       message: `Found ${results.length} works`,
     };
@@ -642,7 +646,11 @@ async function loadInitialState(): Promise<void> {
     results = stored.lastResults as SearchResultItem[];
   }
   if (stored.lastProgress && typeof stored.lastProgress === 'object') {
-    progress = stored.lastProgress as SearchProgressPayload;
+    const storedProgress = stored.lastProgress as SearchProgressPayload;
+    progress =
+      storedProgress.expansionBudget > 0
+        ? storedProgress
+        : { ...storedProgress, expansionBudget: EXPANSION_BUDGET };
   }
 
   await refreshGraphStats();
