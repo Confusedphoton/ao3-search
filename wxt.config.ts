@@ -1,6 +1,10 @@
 import { defineConfig } from "wxt";
 
 export default defineConfig({
+  modules: ["@wxt-dev/auto-icons"],
+  autoIcons: {
+    baseIconPath: "assets/icon.svg",
+  },
   manifestVersion: 3,
   zip: {
     // Firefox zips project sources by default; exclude local AO3 dataset files.

@@ -17,6 +17,7 @@
     "postinstall": "wxt prepare"
   },
   "devDependencies": {
+    "@wxt-dev/auto-icons": "^1.1.1",
     "fake-indexeddb": "^6.2.5",
     "happy-dom": "^20.10.6",
     "typescript": "^5.9.3",
