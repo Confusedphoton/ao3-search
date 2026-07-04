@@ -100,6 +100,14 @@ docs/design.md        Algorithm and system design document
 
 This project is **still in active development**. It is a working MVP: core search, graph persistence, stats import, and tag canonicalization are implemented, but APIs, behavior, and UI may change. See [overall_status.md](overall_status.md) for a detailed implementation checklist and known gaps.
 
+## Privacy and security
+
+**No telemetry or data collection.** This extension does not phone home, collect analytics, or transmit your data to any third-party service. There are no accounts, sign-ups, or external backends.
+
+**Local storage only.** Your search graph, seeds, settings, and imported stats live entirely on your device (IndexedDB in the browser). Nothing is uploaded or synced anywhere. Local persistence exists only because the extension cannot function without caching the graph between sessions — it is a requirement of how search works, not a data-gathering choice.
+
+**Minimal dependencies.** The shipped extension has no runtime npm dependencies. The build toolchain intentionally keeps third-party packages to a small set of dev-only tools (WXT, TypeScript, Vitest) to limit supply-chain exposure and reduce the surface area for known vulnerabilities in the JavaScript ecosystem.
+
 ## License
 
 Licensed under the [Apache License, Version 2.0](LICENSE).
