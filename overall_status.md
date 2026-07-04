@@ -108,6 +108,39 @@ These appear in `docs/design.md` but have no corresponding code:
 
 ---
 
+## Planned platform support (not started)
+
+### Firefox for Android
+
+Desktop Chrome and Firefox are the current targets. Firefox for Android compatibility is a **planned follow-up**, not implemented or device-tested.
+
+**Why it might work without major rewrites**
+
+- WXT’s Firefox build emits `background.scripts` (event-page style), not a service worker — required for MV3 on Android.
+- Permissions and APIs in use (`storage`, `tabs`, `scripting`, content scripts, `runtime` messaging, IndexedDB, Web Workers) are generally available on Fenix.
+- No dependency on desktop-only extension APIs.
+
+**Why it is not supported yet**
+
+| Risk | Detail |
+|---|---|
+| Content scripts | Passive ingestion and on-page seed buttons depend on MV3 content scripts; Fenix had historical gaps around injection and host-permission prompts. |
+| Host permissions | `host_permissions` for `archiveofourown.org` may be auto-granted on Android with poor visibility; failed grants would break background `fetch` during search. |
+| Background suspension | Search runs for tens of seconds in the background; Android kills idle extension processes — no resume logic today. |
+| AO3 mobile markup | `src/ao3/selectors.ts` targets desktop DOM; mobile AO3 pages may parse incorrectly. |
+| Mobile UX | Popup is a fixed 360×560px panel; file export (`<a download>`) and stats/graph import may need mobile-specific handling. |
+| Distribution | End users install Android extensions from AMO’s curated set; sideloading requires USB + `web-ext run -t firefox-android`. |
+
+**Likely work before shipping**
+
+1. Device test on recent Firefox for Android (content scripts, search loop, permissions).
+2. Add `gecko_android.strict_min_version` to `wxt.config.ts` and run Android-aware lint.
+3. Verify or adapt AO3 parsers against mobile page HTML.
+4. Harden search against background kills (persist/resume expansion state).
+5. Responsive popup/options pass; AMO listing if publishing to Android users.
+
+---
+
 ## Architecture vs the doc (conceptual map)
 
 ```mermaid

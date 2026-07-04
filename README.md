@@ -120,6 +120,17 @@ These are gaps between the current MVP and [docs/design.md](docs/design.md); see
 
 Rewrite the compute backend (`src/compute/`, `src/propagation/`) so heavy graph work runs in WebAssembly instead of the current TypeScript Web Worker. Goal: faster sparse propagation on large local graphs without changing the extension’s request-minimization philosophy.
 
+### Firefox for Android
+
+Desktop Firefox is supported today; **Firefox for Android is not tested or targeted yet**, but the project is a plausible fit later. The Firefox build already uses background scripts (not a service worker), which is the MV3 pattern Android expects, and the extension avoids desktop-only APIs (context menus, sidebar, keyboard commands, etc.).
+
+Before calling it supported, it needs real-device validation. Known risks to work through:
+
+- **MV3 on Fenix** — content-script injection and host-permission UX are less mature on Android than desktop.
+- **Background lifecycle** — Android may suspend the extension during a multi-minute search (rate-limited fetches + propagation).
+- **AO3 mobile DOM** — parsers and selectors assume desktop page markup; mobile AO3 layouts may need separate handling.
+- **Mobile UX** — popup is a fixed 360px panel; on Android it opens as a fullscreen overlay. Export/import and stats CSV upload need a phone-friendly pass.
+
 ### Everything else
 
 I’ll add things here as I think of new features or run across ideas I find cool—this roadmap isn’t exhaustive and priorities will shift.
