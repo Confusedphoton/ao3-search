@@ -100,6 +100,30 @@ docs/design.md        Algorithm and system design document
 
 This project is **still in active development**. It is a working MVP: core search, graph persistence, stats import, and tag canonicalization are implemented, but APIs, behavior, and UI may change. See [overall_status.md](overall_status.md) for a detailed implementation checklist and known gaps.
 
+## Roadmap
+
+This is where the project is headed—not a promise of dates or order, but the loose ends I know about plus directions I want to explore.
+
+### Known loose ends
+
+These are gaps between the current MVP and [docs/design.md](docs/design.md); see [overall_status.md](overall_status.md) for the full checklist.
+
+- **Search loop** — beam search with a maintained top-K frontier; post-expansion branch evaluation (score change, newly promoted nodes, authority redistribution); convergence-based early stopping when relevance stabilizes across iterations.
+- **Exploration** — tag/author fetches only parse the first listing page (no pagination); passive browsing enrichment is skipped while a search is running.
+- **Query layer** — each expansion rebuilds CSR and reruns the full propagation pipeline; no persistent query-graph object or cached propagation state between iterations.
+- **Graph extensions** — bookmark graph (reader → work edges) is design-only so far.
+- **Compute routing** — propagation runs in a Web Worker spawned from the service worker; the offscreen-document coordinator from the design doc is not used.
+- **Polish & UX** — UI copy still says “Personalized PageRank” in places; no UI for surfacing synonym/tag-equivalence clusters (merges come from the stats dump only).
+- **Weighting experiments** — explicit cold-start co-occurrence priors; global rarity × local enrichment for niche communities.
+
+### Compute backend (WASM)
+
+Rewrite the compute backend (`src/compute/`, `src/propagation/`) so heavy graph work runs in WebAssembly instead of the current TypeScript Web Worker. Goal: faster sparse propagation on large local graphs without changing the extension’s request-minimization philosophy.
+
+### Everything else
+
+I’ll add things here as I think of new features or run across ideas I find cool—this roadmap isn’t exhaustive and priorities will shift.
+
 ## Privacy and security
 
 **No telemetry or data collection.** This extension does not phone home, collect analytics, or transmit your data to any third-party service. There are no accounts, sign-ups, or external backends.
