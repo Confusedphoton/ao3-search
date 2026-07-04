@@ -158,7 +158,7 @@ li.empty {
   border: 1px solid var(--border-input);
   border-radius: 4px;
   box-shadow: 0 4px 12px var(--shadow);
-  max-height: 160px;
+  max-height: 200px;
   overflow-y: auto;
 }
 

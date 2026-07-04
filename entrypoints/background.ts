@@ -444,7 +444,7 @@ async function addNegativeTag(tagName: string): Promise<ExtensionMessage> {
 }
 
 async function searchGraphTags(query: string): Promise<ExtensionMessage> {
-  const nodes = await searchTagNodes(query, 8);
+  const nodes = await searchTagNodes(query, 10);
   const tags: GraphTagMatch[] = nodes.map((node) => ({
     tagName: node.key,
     workCount: node.calibratedFreq,

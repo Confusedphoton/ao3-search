@@ -12,6 +12,7 @@ import type {
   WorkMergeInput,
 } from '../graph/types';
 import { NodeKind } from '../graph/types';
+import { fuzzyTagMatch } from '../search/fuzzyTagMatch';
 import { resolveCanonicalStatsTag } from './statsTagLookup';
 
 interface MetaRecord {
@@ -377,21 +378,28 @@ export async function getAuthorNode(authorKey: string): Promise<GraphNode | null
   return getNodeByKey(NodeKind.Author, authorKey);
 }
 
-export async function searchTagNodes(query: string, limit = 8): Promise<GraphNode[]> {
-  const normalized = query.trim().toLowerCase();
+export async function searchTagNodes(query: string, limit = 10): Promise<GraphNode[]> {
+  const normalized = query.trim();
   if (!normalized) return [];
 
   return tx('nodes', 'readonly', async (transaction) => {
     const nodes = await idbGetAll<GraphNode>(transaction.objectStore('nodes'));
     return nodes
-      .filter((node) => node.kind === NodeKind.Tag && node.key.toLowerCase().includes(normalized))
-      .sort((a, b) => {
-        const freqA = a.calibratedFreq ?? a.estimatedFreq;
-        const freqB = b.calibratedFreq ?? b.estimatedFreq;
-        if (freqB !== freqA) return freqB - freqA;
-        return a.key.localeCompare(b.key);
+      .filter((node) => node.kind === NodeKind.Tag)
+      .map((node) => {
+        const score = fuzzyTagMatch(normalized, node.key);
+        return score == null ? null : { node, score };
       })
-      .slice(0, limit);
+      .filter((item): item is { node: GraphNode; score: number } => item !== null)
+      .sort((a, b) => {
+        if (b.score !== a.score) return b.score - a.score;
+        const freqA = a.node.calibratedFreq ?? a.node.estimatedFreq;
+        const freqB = b.node.calibratedFreq ?? b.node.estimatedFreq;
+        if (freqB !== freqA) return freqB - freqA;
+        return a.node.key.localeCompare(b.node.key);
+      })
+      .slice(0, limit)
+      .map((item) => item.node);
   });
 }
 

@@ -24,6 +24,7 @@ let progress: SearchProgressPayload | null = null;
 let results: SearchResultItem[] = [];
 let tagSuggestions: GraphTagMatch[] = [];
 let tagSearchQuery = '';
+let tagSuggestionTarget: 'seed' | 'negative' = 'seed';
 let statusHint = '';
 let tagSearchTimer: ReturnType<typeof setTimeout> | null = null;
 let graphStats: GraphStats | null = null;
@@ -55,15 +56,15 @@ function negativeSeedKey(seed: NegativeSeed): string {
   return seed.authorKey;
 }
 
-function renderTagSuggestions(): string {
-  if (tagSuggestions.length === 0) return '';
+function renderTagSuggestionsFor(target: 'seed' | 'negative'): string {
+  if (tagSuggestionTarget !== target || tagSuggestions.length === 0) return '';
   return `
-    <ul id="tag-suggestions" class="tag-suggestions">
+    <ul id="tag-suggestions" class="tag-suggestions" role="listbox">
       ${tagSuggestions
         .map(
           (tag) => `
-        <li>
-          <button type="button" class="tag-suggestion" data-tag-name="${escapeAttr(tag.tagName)}">
+        <li role="presentation">
+          <button type="button" class="tag-suggestion" data-tag-name="${escapeAttr(tag.tagName)}" role="option">
             <span>${escapeHtml(tag.tagName)}</span>
             ${tag.workCount != null ? `<span class="tag-meta">${tag.workCount.toLocaleString()} works</span>` : ''}
           </button>
@@ -124,13 +125,13 @@ function render(): void {
             id="seed-tag-input"
             type="text"
             placeholder="Search tags in your graph…"
-            value="${escapeAttr(tagSearchQuery)}"
+            value="${escapeAttr(tagSuggestionTarget === 'seed' ? tagSearchQuery : '')}"
             autocomplete="off"
             ${searching ? 'disabled' : ''}
           />
           <button type="submit" ${searching ? 'disabled' : ''}>Add tag</button>
         </form>
-        ${renderTagSuggestions()}
+        ${renderTagSuggestionsFor('seed')}
       </div>
       <ul id="seed-list">
         ${
@@ -156,15 +157,20 @@ function render(): void {
         <button id="add-negative-work" type="button" ${searching ? 'disabled' : ''}>Add current tab</button>
       </div>
       <p class="hint">Works, tags, or authors to penalize — e.g. Major Character Death.</p>
-      <form id="add-negative-tag-form" class="tag-form">
-        <input
-          id="negative-tag-input"
-          type="text"
-          placeholder="Tag to avoid"
-          ${searching ? 'disabled' : ''}
-        />
-        <button type="submit" ${searching ? 'disabled' : ''}>Add tag</button>
-      </form>
+      <div class="tag-search">
+        <form id="add-negative-tag-form" class="tag-form">
+          <input
+            id="negative-tag-input"
+            type="text"
+            placeholder="Search tags to avoid…"
+            value="${escapeAttr(tagSuggestionTarget === 'negative' ? tagSearchQuery : '')}"
+            autocomplete="off"
+            ${searching ? 'disabled' : ''}
+          />
+          <button type="submit" ${searching ? 'disabled' : ''}>Add tag</button>
+        </form>
+        ${renderTagSuggestionsFor('negative')}
+      </div>
       <ul id="negative-seed-list">
         ${
           negativeSeeds.length === 0
@@ -262,6 +268,40 @@ function render(): void {
   }
 }
 
+function clearTagSuggestions(): void {
+  tagSearchQuery = '';
+  tagSuggestions = [];
+}
+
+function scheduleTagSearch(value: string, target: 'seed' | 'negative'): void {
+  tagSuggestionTarget = target;
+  tagSearchQuery = value;
+  if (tagSearchTimer) clearTimeout(tagSearchTimer);
+  if (value.trim().length < 1) {
+    tagSuggestions = [];
+    render();
+    return;
+  }
+  tagSearchTimer = setTimeout(() => {
+    void sendMessage({ type: 'SearchGraphTags', query: value.trim() }).then((response) => {
+      if (response?.type === 'GraphTagResults' && tagSuggestionTarget === target) {
+        tagSuggestions = response.tags;
+        render();
+      }
+    });
+  }, 150);
+}
+
+async function addTagFromSuggestion(tagName: string): Promise<void> {
+  if (tagSuggestionTarget === 'negative') {
+    await dispatch({ type: 'AddNegativeTag', tagName });
+  } else {
+    await dispatch({ type: 'AddSeedTag', tagName });
+  }
+  clearTagSuggestions();
+  render();
+}
+
 function bindEvents(): void {
   document.querySelector('#add-seed')?.addEventListener('click', () => {
     void dispatch({ type: 'AddSeedFromTab' }).then((beforeCount) => {
@@ -287,39 +327,24 @@ function bindEvents(): void {
     const tagName = input?.value.trim();
     if (!tagName) return;
     void dispatch({ type: 'AddSeedTag', tagName }).then(() => {
-      tagSearchQuery = '';
-      tagSuggestions = [];
+      clearTagSuggestions();
       if (input) input.value = '';
     });
   });
 
   document.querySelector('#seed-tag-input')?.addEventListener('input', (event) => {
-    const value = (event.target as HTMLInputElement).value;
-    tagSearchQuery = value;
-    if (tagSearchTimer) clearTimeout(tagSearchTimer);
-    if (value.trim().length < 2) {
-      tagSuggestions = [];
-      render();
-      return;
-    }
-    tagSearchTimer = setTimeout(() => {
-      void sendMessage({ type: 'SearchGraphTags', query: value.trim() }).then((response) => {
-        if (response?.type === 'GraphTagResults') {
-          tagSuggestions = response.tags;
-          render();
-        }
-      });
-    }, 150);
+    scheduleTagSearch((event.target as HTMLInputElement).value, 'seed');
+  });
+
+  document.querySelector('#seed-tag-input')?.addEventListener('focus', () => {
+    tagSuggestionTarget = 'seed';
   });
 
   document.querySelectorAll('.tag-suggestion').forEach((el) => {
     el.addEventListener('click', () => {
       const tagName = el.getAttribute('data-tag-name');
       if (!tagName) return;
-      void dispatch({ type: 'AddSeedTag', tagName }).then(() => {
-        tagSearchQuery = '';
-        tagSuggestions = [];
-      });
+      void addTagFromSuggestion(tagName);
     });
   });
 
@@ -329,8 +354,17 @@ function bindEvents(): void {
     const tagName = input?.value.trim();
     if (!tagName) return;
     void dispatch({ type: 'AddNegativeTag', tagName }).then(() => {
+      clearTagSuggestions();
       if (input) input.value = '';
     });
+  });
+
+  document.querySelector('#negative-tag-input')?.addEventListener('input', (event) => {
+    scheduleTagSearch((event.target as HTMLInputElement).value, 'negative');
+  });
+
+  document.querySelector('#negative-tag-input')?.addEventListener('focus', () => {
+    tagSuggestionTarget = 'negative';
   });
 
   document.querySelector('#start-search')?.addEventListener('click', () => {
