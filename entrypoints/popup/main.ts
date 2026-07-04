@@ -86,6 +86,23 @@ function formatGraphStats(stats: GraphStats): string {
   return `${stats.workCount.toLocaleString()} works · ${stats.tagCount.toLocaleString()} tags · ${stats.authorCount.toLocaleString()} authors`;
 }
 
+function canSearchLonger(): boolean {
+  return !searching && seeds.length >= MIN_SEEDS && results.length > 0 && (progress?.frontierSize ?? 0) > 0;
+}
+
+function renderSearchActions(): string {
+  if (searching) {
+    return '<button id="cancel-search" type="button">Cancel</button>';
+  }
+  const actions = [
+    `<button id="start-search" type="button" ${seeds.length < MIN_SEEDS ? 'disabled' : ''}>Start search</button>`,
+  ];
+  if (canSearchLonger()) {
+    actions.push('<button id="continue-search" type="button">Search longer</button>');
+  }
+  return actions.join('');
+}
+
 function renderImportPrompt(): string {
   if (!pendingImport) return '';
   return `
@@ -193,11 +210,7 @@ function render(): void {
       <div class="section-header">
         <h2>Search</h2>
         <div class="actions">
-          ${
-            searching
-              ? '<button id="cancel-search" type="button">Cancel</button>'
-              : `<button id="start-search" type="button" ${seeds.length < MIN_SEEDS ? 'disabled' : ''}>Start search</button>`
-          }
+          ${renderSearchActions()}
         </div>
       </div>
       ${
@@ -373,6 +386,12 @@ function bindEvents(): void {
     progress = null;
     render();
     void dispatch({ type: 'StartSearch' });
+  });
+
+  document.querySelector('#continue-search')?.addEventListener('click', () => {
+    statusHint = '';
+    render();
+    void dispatch({ type: 'ContinueSearch' });
   });
 
   document.querySelector('#cancel-search')?.addEventListener('click', () => {
@@ -568,8 +587,8 @@ function applyState(message: ExtensionMessage): void {
     progress = {
       phase: 'done',
       requestsUsed: message.payload.requestsUsed,
-      expansionBudget: EXPANSION_BUDGET,
-      frontierSize: 0,
+      expansionBudget: message.payload.expansionBudget,
+      frontierSize: message.payload.frontierSize,
       message: `Found ${results.length} works`,
     };
     render();

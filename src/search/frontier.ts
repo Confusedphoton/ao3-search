@@ -1,4 +1,4 @@
-import { FRONTIER_EPSILON, MIN_FRONTIER_EXPECTED_INFO, PRECISION_EPS } from '../config/constants';
+import { CONTINUE_FRONTIER_EPSILON, FRONTIER_EPSILON, PRECISION_EPS } from '../config/constants';
 import type { CSRGraph } from '../graph/csr';
 import { NodeKind } from '../graph/types';
 
@@ -36,10 +36,14 @@ export function buildFrontier(
   return frontier.sort((a, b) => b.expectedInfo - a.expectedInfo);
 }
 
-export function pickNextFrontier(frontier: FrontierNode[]): FrontierNode | null {
+export function pickNextFrontier(
+  frontier: FrontierNode[],
+  options: { exploratory?: boolean } = {},
+): FrontierNode | null {
   if (frontier.length === 0) return null;
   if (frontier.length === 1) return frontier[0];
-  if (Math.random() < FRONTIER_EPSILON) {
+  const epsilon = options.exploratory ? CONTINUE_FRONTIER_EPSILON : FRONTIER_EPSILON;
+  if (Math.random() < epsilon) {
     return frontier[Math.floor(Math.random() * frontier.length)];
   }
   return frontier[0];

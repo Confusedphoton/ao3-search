@@ -30,6 +30,8 @@ export interface SearchResultItem {
 export interface SearchResultsPayload {
   results: SearchResultItem[];
   requestsUsed: number;
+  expansionBudget: number;
+  frontierSize: number;
 }
 
 export interface QueryPropagationInputPayload {
@@ -107,6 +109,7 @@ export type ExtensionMessage =
       results: SearchResultItem[];
     }
   | { type: 'StartSearch' }
+  | { type: 'ContinueSearch' }
   | { type: 'CancelSearch' }
   | { type: 'ExportGraph' }
   | { type: 'GraphExported'; export: GraphExport }

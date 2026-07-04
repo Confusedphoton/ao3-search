@@ -16,6 +16,8 @@ export const PRECISION_EPS = 1e-9;
 export const TAG_FLUX_EPS = 1e-12;
 export const TAG_PRIOR_FALLBACK_LOG = 0;
 export const FRONTIER_EPSILON = 0.05;
+/** When continuing search, explore more randomly to escape local ranking minima. */
+export const CONTINUE_FRONTIER_EPSILON = 0.5;
 export const TOP_RESULTS = 25;
 
 export const MIN_SEEDS = 1;

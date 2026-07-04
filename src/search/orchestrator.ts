@@ -40,7 +40,32 @@ export class SearchOrchestrator {
     negativeSeeds: NegativeSeed[],
     onProgress: (payload: SearchProgressPayload) => void,
   ): Promise<SearchRunResult> {
+    return this.runWithOptions(seeds, negativeSeeds, { continueFromRequests: 0 }, onProgress);
+  }
+
+  async continueRun(
+    seeds: PositiveSeed[],
+    negativeSeeds: NegativeSeed[],
+    initialRequestsUsed: number,
+    onProgress: (payload: SearchProgressPayload) => void,
+  ): Promise<SearchRunResult> {
+    return this.runWithOptions(
+      seeds,
+      negativeSeeds,
+      { continueFromRequests: initialRequestsUsed, forceExpand: true },
+      onProgress,
+    );
+  }
+
+  private async runWithOptions(
+    seeds: PositiveSeed[],
+    negativeSeeds: NegativeSeed[],
+    options: { continueFromRequests: number; forceExpand?: boolean },
+    onProgress: (payload: SearchProgressPayload) => void,
+  ): Promise<SearchRunResult> {
     this.cancelled = false;
+    const continuing = options.continueFromRequests > 0;
+    const forceExpand = options.forceExpand ?? false;
     const positiveKeys = seeds.map((s) => {
       if (s.kind === 'work') return { kind: 'work' as const, key: s.workId };
       if (s.kind === 'tag') return { kind: 'tag' as const, key: s.tagName };
@@ -52,34 +77,45 @@ export class SearchOrchestrator {
       if (s.kind === 'tag') return { kind: 'tag' as const, key: s.tagName };
       return { kind: 'author' as const, key: s.authorKey };
     });
-    let requestsUsed = 0;
+    let requestsUsed = options.continueFromRequests;
+    const expansionBudget = requestsUsed + EXPANSION_BUDGET;
 
-    onProgress({
-      phase: 'cold-start',
-      requestsUsed,
-      expansionBudget: EXPANSION_BUDGET,
-      frontierSize: 0,
-      message: 'Fetching seed nodes…',
-    });
-
-    const beforeSeeds = await loadGraphSnapshot();
-    await this.scheduler.ensurePositiveSeeds(seeds);
-    if (negativeSeeds.length > 0) {
+    if (!continuing) {
       onProgress({
         phase: 'cold-start',
         requestsUsed,
-        expansionBudget: EXPANSION_BUDGET,
+        expansionBudget,
         frontierSize: 0,
-        message: 'Fetching negative seeds…',
+        message: 'Fetching seed nodes…',
       });
-      await this.scheduler.ensureNegativeSeeds(negativeSeeds);
-    }
-    const afterSeeds = await loadGraphSnapshot();
-    requestsUsed += countNewlyExplored(beforeSeeds.nodes, afterSeeds.nodes);
 
-    if (this.cancelled) {
-      await closeComputeHost();
-      return { results: [], requestsUsed };
+      const beforeSeeds = await loadGraphSnapshot();
+      await this.scheduler.ensurePositiveSeeds(seeds);
+      if (negativeSeeds.length > 0) {
+        onProgress({
+          phase: 'cold-start',
+          requestsUsed,
+          expansionBudget,
+          frontierSize: 0,
+          message: 'Fetching negative seeds…',
+        });
+        await this.scheduler.ensureNegativeSeeds(negativeSeeds);
+      }
+      const afterSeeds = await loadGraphSnapshot();
+      requestsUsed += countNewlyExplored(beforeSeeds.nodes, afterSeeds.nodes);
+
+      if (this.cancelled) {
+        await closeComputeHost();
+        return { results: [], requestsUsed };
+      }
+    } else {
+      onProgress({
+        phase: 'expanding',
+        requestsUsed,
+        expansionBudget,
+        frontierSize: 0,
+        message: 'Continuing search — exploring beyond local optimum…',
+      });
     }
 
     const seedTitleMap = new Map<string, string>();
@@ -117,7 +153,7 @@ export class SearchOrchestrator {
         onProgress({
           phase: 'error',
           requestsUsed,
-          expansionBudget: EXPANSION_BUDGET,
+          expansionBudget,
           frontierSize: 0,
           message: 'No seed nodes found in graph.',
         });
@@ -127,7 +163,7 @@ export class SearchOrchestrator {
       onProgress({
         phase: 'ranking',
         requestsUsed,
-        expansionBudget: EXPANSION_BUDGET,
+        expansionBudget,
         frontierSize: 0,
         message: 'Running Personalized PageRank…',
       });
@@ -149,17 +185,22 @@ export class SearchOrchestrator {
       const frontier = buildFrontier(csr, relevance, authority, precision);
 
       emitPreview(csr, relevance, {
-        phase: expansion === 0 ? 'ranking' : 'expanding',
+        phase: expansion === 0 && !continuing ? 'ranking' : 'expanding',
         requestsUsed,
-        expansionBudget: EXPANSION_BUDGET,
+        expansionBudget,
         frontierSize: frontier.length,
-        message: expansion === 0 ? 'Initial estimate' : 'Updating ranking',
+        message:
+          expansion === 0 && !continuing
+            ? 'Initial estimate'
+            : continuing && expansion === 0
+              ? 'Refining results'
+              : 'Updating ranking',
       });
 
       if (frontier.length === 0) break;
-      if (maxFrontierExpectedInfo(frontier) < MIN_FRONTIER_EXPECTED_INFO) break;
+      if (!forceExpand && maxFrontierExpectedInfo(frontier) < MIN_FRONTIER_EXPECTED_INFO) break;
 
-      const next = pickNextFrontier(frontier);
+      const next = pickNextFrontier(frontier, { exploratory: forceExpand });
       if (!next) break;
 
       const node = csr.nodeByIndex[next.index];
@@ -188,12 +229,15 @@ export class SearchOrchestrator {
 
     const relevance = Float64Array.from(finalPropagation.relevance);
     const results = rankWorks(finalCsr, relevance, excludeWorkIds, seedTitleMap);
+    const finalAuthority = Float64Array.from(finalPropagation.authority);
+    const finalPrecision = Float64Array.from(finalPropagation.precision);
+    const remainingFrontier = buildFrontier(finalCsr, relevance, finalAuthority, finalPrecision);
 
     onProgress({
       phase: 'done',
       requestsUsed,
-      expansionBudget: EXPANSION_BUDGET,
-      frontierSize: 0,
+      expansionBudget,
+      frontierSize: remainingFrontier.length,
       message: `Found ${results.length} works`,
       previewResults: results,
     });

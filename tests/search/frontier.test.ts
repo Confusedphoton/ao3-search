@@ -41,4 +41,19 @@ describe('frontier', () => {
     expect(pickNextFrontier(frontier)?.nodeId).toBe(2);
     Math.random = originalRandom;
   });
+
+  it('explores randomly more often when forced', () => {
+    const frontier = [
+      { nodeId: 2, index: 1, relevance: 0.9, authority: 0.9, precision: 1, expectedInfo: 0.81 },
+      { nodeId: 3, index: 2, relevance: 0.1, authority: 0.9, precision: 1, expectedInfo: 0.09 },
+    ];
+    const originalRandom = Math.random;
+    let calls = 0;
+    Math.random = () => {
+      calls++;
+      return calls === 1 ? 0.1 : 0.9;
+    };
+    expect(pickNextFrontier(frontier, { exploratory: true })?.nodeId).toBe(3);
+    Math.random = originalRandom;
+  });
 });

@@ -558,7 +558,18 @@ onMessage(async (message, sender) => {
       lastResults = [];
       lastProgress = null;
       orchestrator = new SearchOrchestrator();
-      void runSearch(orchestrator);
+      void runSearch(orchestrator, 'start');
+      await persistUiState();
+      await publishState();
+      return stateUpdate(true);
+    }
+
+    case 'ContinueSearch': {
+      if (searching || seeds.length === 0 || lastResults.length === 0) return stateUpdate(searching);
+      const initialRequestsUsed = lastProgress?.requestsUsed ?? 0;
+      searching = true;
+      orchestrator = new SearchOrchestrator();
+      void runSearch(orchestrator, 'continue', initialRequestsUsed);
       await persistUiState();
       await publishState();
       return stateUpdate(true);
@@ -569,32 +580,51 @@ onMessage(async (message, sender) => {
   }
 });
 
-async function runSearch(search: SearchOrchestrator): Promise<void> {
-  let lastRequestsUsed = 0;
+async function runSearch(
+  search: SearchOrchestrator,
+  mode: 'start' | 'continue',
+  initialRequestsUsed = 0,
+): Promise<void> {
+  let lastRequestsUsed = initialRequestsUsed;
+
+  async function onSearchProgress(payload: SearchProgressPayload): Promise<void> {
+    lastRequestsUsed = payload.requestsUsed;
+    if (payload.previewResults) {
+      lastResults = payload.previewResults;
+      lastProgress = payload;
+      await persistUiState();
+    }
+    await broadcast({ type: 'SearchProgress', payload });
+    await broadcast(stateUpdate(true, payload));
+  }
+
   try {
-    const { results, requestsUsed } = await search.run(seeds, negativeSeeds, async (payload) => {
-      lastRequestsUsed = payload.requestsUsed;
-      if (payload.previewResults) {
-        lastResults = payload.previewResults;
-        lastProgress = payload;
-        await persistUiState();
-      }
-      await broadcast({ type: 'SearchProgress', payload });
-      await broadcast(stateUpdate(true, payload));
-    });
+    const run =
+      mode === 'continue'
+        ? search.continueRun(seeds, negativeSeeds, initialRequestsUsed, onSearchProgress)
+        : search.run(seeds, negativeSeeds, onSearchProgress);
+
+    const { results, requestsUsed } = await run;
     lastResults = results;
-    lastProgress = {
-      phase: 'done',
-      requestsUsed,
-      expansionBudget: EXPANSION_BUDGET,
-      frontierSize: 0,
-      message: `Found ${results.length} works`,
-      previewResults: results,
-    };
+    if (!lastProgress || lastProgress.phase !== 'done') {
+      lastProgress = {
+        phase: 'done',
+        requestsUsed,
+        expansionBudget: requestsUsed,
+        frontierSize: 0,
+        message: `Found ${results.length} works`,
+        previewResults: results,
+      };
+    }
     await persistUiState();
     await broadcast({
       type: 'SearchResults',
-      payload: { results, requestsUsed },
+      payload: {
+        results,
+        requestsUsed,
+        expansionBudget: lastProgress.expansionBudget,
+        frontierSize: lastProgress.frontierSize,
+      },
     });
   } catch (err) {
     console.error('[ao3-search] search failed', err);
@@ -603,7 +633,7 @@ async function runSearch(search: SearchOrchestrator): Promise<void> {
       payload: {
         phase: 'error',
         requestsUsed: lastRequestsUsed,
-        expansionBudget: EXPANSION_BUDGET,
+        expansionBudget: lastProgress?.expansionBudget ?? EXPANSION_BUDGET,
         frontierSize: 0,
         message: err instanceof Error ? err.message : String(err),
       },
