@@ -21,8 +21,8 @@ export const CONTINUE_FRONTIER_EPSILON = 0.5;
 export const TOP_RESULTS = 25;
 
 export const MIN_SEEDS = 1;
-export const MAX_SEEDS = 5;
-export const MAX_NEGATIVE_SEEDS = 10;
+export const MAX_SEEDS = 20;
+export const MAX_NEGATIVE_SEEDS = 20;
 export const NEGATIVE_SEED_WEIGHT = 1;
 
 export const DB_NAME = 'ao3-search';
