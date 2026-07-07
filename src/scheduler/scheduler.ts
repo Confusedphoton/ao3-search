@@ -131,17 +131,21 @@ export class RequestScheduler {
   async ensureNegativeSeeds(negativeSeeds: NegativeSeed[]): Promise<void> {
     for (const seed of negativeSeeds) {
       if (seed.kind === 'work') {
-        const existing = await getWorkNode(seed.workId);
-        if (existing?.explored) continue;
+        // Negative work seeds only need a graph node for teleport/signing; listing
+        // blurbs are enough — full exploration is not required.
+        if (await getWorkNode(seed.workId)) continue;
         await this.fetchWork(seed.workId);
         continue;
       }
 
       if (seed.kind === 'tag') {
+        const canonicalName = await resolveGraphTagName(seed.tagName);
+        if (await getTagNode(canonicalName)) continue;
         await this.ensureTagSeed(seed.tagName);
         continue;
       }
 
+      if (await getAuthorNode(seed.authorKey)) continue;
       await this.ensureAuthorSeed(seed.authorKey);
     }
   }

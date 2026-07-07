@@ -38,7 +38,7 @@ export class SearchOrchestrator {
   async run(
     seeds: PositiveSeed[],
     negativeSeeds: NegativeSeed[],
-    onProgress: (payload: SearchProgressPayload) => void,
+    onProgress: (payload: SearchProgressPayload) => void | Promise<void>,
   ): Promise<SearchRunResult> {
     return this.runWithOptions(seeds, negativeSeeds, { continueFromRequests: 0 }, onProgress);
   }
@@ -47,7 +47,7 @@ export class SearchOrchestrator {
     seeds: PositiveSeed[],
     negativeSeeds: NegativeSeed[],
     initialRequestsUsed: number,
-    onProgress: (payload: SearchProgressPayload) => void,
+    onProgress: (payload: SearchProgressPayload) => void | Promise<void>,
   ): Promise<SearchRunResult> {
     return this.runWithOptions(
       seeds,
@@ -61,7 +61,7 @@ export class SearchOrchestrator {
     seeds: PositiveSeed[],
     negativeSeeds: NegativeSeed[],
     options: { continueFromRequests: number; forceExpand?: boolean },
-    onProgress: (payload: SearchProgressPayload) => void,
+    onProgress: (payload: SearchProgressPayload) => void | Promise<void>,
   ): Promise<SearchRunResult> {
     this.cancelled = false;
     const continuing = options.continueFromRequests > 0;
@@ -81,7 +81,7 @@ export class SearchOrchestrator {
     const expansionBudget = requestsUsed + EXPANSION_BUDGET;
 
     if (!continuing) {
-      onProgress({
+      await onProgress({
         phase: 'cold-start',
         requestsUsed,
         expansionBudget,
@@ -92,7 +92,7 @@ export class SearchOrchestrator {
       const beforeSeeds = await loadGraphSnapshot();
       await this.scheduler.ensurePositiveSeeds(seeds);
       if (negativeSeeds.length > 0) {
-        onProgress({
+        await onProgress({
           phase: 'cold-start',
           requestsUsed,
           expansionBudget,
@@ -109,7 +109,7 @@ export class SearchOrchestrator {
         return { results: [], requestsUsed };
       }
     } else {
-      onProgress({
+      await onProgress({
         phase: 'expanding',
         requestsUsed,
         expansionBudget,
@@ -130,12 +130,12 @@ export class SearchOrchestrator {
       if (seed.kind === 'work') excludeWorkIds.add(seed.workId);
     }
 
-    const emitPreview = (
+    const emitPreview = async (
       csr: CSRGraph,
       relevance: Float64Array | number[],
       payload: Omit<SearchProgressPayload, 'previewResults'>,
-    ): void => {
-      onProgress({
+    ): Promise<void> => {
+      await onProgress({
         ...payload,
         previewResults: rankWorks(csr, relevance, excludeWorkIds, seedTitleMap),
       });
@@ -150,7 +150,7 @@ export class SearchOrchestrator {
       const negativeSeedIndices = seedIndicesForNegativeSeeds(csr, negativeKeys);
 
       if (seedIndices.length === 0) {
-        onProgress({
+        await onProgress({
           phase: 'error',
           requestsUsed,
           expansionBudget,
@@ -160,7 +160,7 @@ export class SearchOrchestrator {
         break;
       }
 
-      onProgress({
+      await onProgress({
         phase: 'ranking',
         requestsUsed,
         expansionBudget,
@@ -184,7 +184,7 @@ export class SearchOrchestrator {
       const precision = Float64Array.from(propagation.precision);
       const frontier = buildFrontier(csr, relevance, authority, precision);
 
-      emitPreview(csr, relevance, {
+      await emitPreview(csr, relevance, {
         phase: expansion === 0 && !continuing ? 'ranking' : 'expanding',
         requestsUsed,
         expansionBudget,
@@ -233,7 +233,7 @@ export class SearchOrchestrator {
     const finalPrecision = Float64Array.from(finalPropagation.precision);
     const remainingFrontier = buildFrontier(finalCsr, relevance, finalAuthority, finalPrecision);
 
-    onProgress({
+    await onProgress({
       phase: 'done',
       requestsUsed,
       expansionBudget,

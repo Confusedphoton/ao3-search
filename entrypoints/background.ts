@@ -589,11 +589,11 @@ async function runSearch(
 
   async function onSearchProgress(payload: SearchProgressPayload): Promise<void> {
     lastRequestsUsed = payload.requestsUsed;
+    lastProgress = payload;
     if (payload.previewResults) {
       lastResults = payload.previewResults;
-      lastProgress = payload;
-      await persistUiState();
     }
+    await persistUiState();
     await broadcast({ type: 'SearchProgress', payload });
     await broadcast(stateUpdate(true, payload));
   }
@@ -628,16 +628,15 @@ async function runSearch(
     });
   } catch (err) {
     console.error('[ao3-search] search failed', err);
-    await broadcast({
-      type: 'SearchProgress',
-      payload: {
-        phase: 'error',
-        requestsUsed: lastRequestsUsed,
-        expansionBudget: lastProgress?.expansionBudget ?? EXPANSION_BUDGET,
-        frontierSize: 0,
-        message: err instanceof Error ? err.message : String(err),
-      },
-    });
+    lastProgress = {
+      phase: 'error',
+      requestsUsed: lastRequestsUsed,
+      expansionBudget: lastProgress?.expansionBudget ?? EXPANSION_BUDGET,
+      frontierSize: 0,
+      message: err instanceof Error ? err.message : String(err),
+    };
+    await persistUiState();
+    await broadcast({ type: 'SearchProgress', payload: lastProgress });
   } finally {
     searching = false;
     orchestrator = null;
