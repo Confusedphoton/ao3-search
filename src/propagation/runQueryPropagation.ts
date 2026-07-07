@@ -41,6 +41,13 @@ export interface QueryPropagationInput {
   alpha?: number;
   maxIterations?: number;
   tolerance?: number;
+  debug?: boolean;
+}
+
+export interface QueryPropagationDebugResult {
+  priorLog: Float64Array;
+  tagPriorLog: Float64Array;
+  initialAuthority: Float64Array;
 }
 
 export interface QueryPropagationResult {
@@ -49,6 +56,7 @@ export interface QueryPropagationResult {
   precision: Float64Array;
   expectedInfo: Float64Array;
   iterations: { relevance: number; authority: number };
+  debug?: QueryPropagationDebugResult;
 }
 
 interface PriorCsrView extends PriorGraph {}
@@ -118,6 +126,7 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     alpha = PPR_ALPHA,
     maxIterations = PPR_MAX_ITERATIONS,
     tolerance = PPR_TOLERANCE,
+    debug = false,
   } = input;
 
   const nodeCount = offsets.length - 1;
@@ -152,6 +161,7 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
 
   const priorCsr = buildPriorCsrView(input);
   const priorLog = buildPriorLog(priorCsr);
+  const priorLogBeforeTagMerge = debug ? new Float64Array(priorLog) : null;
 
   const initialAuthority = runAuthorityPropagation(unsignedGraph, priorLog, params);
   const relevanceRun = runRelevancePropagation(
@@ -163,7 +173,7 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     params,
   );
 
-  const tagPriorLog = computeTagPriorLogFromFlux({
+  const tagPriorLogCompact = computeTagPriorLogFromFlux({
     nodeCount,
     offsets,
     neighbors,
@@ -173,7 +183,7 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     tagIndices,
     relevance: relevanceRun.relevance,
   });
-  mergeTagPriorLog(priorLog, tagIndices, tagPriorLog);
+  mergeTagPriorLog(priorLog, tagIndices, tagPriorLogCompact);
 
   const refinedAuthority = runAuthorityPropagation(unsignedGraph, priorLog, params);
   const precision = computePrecision(unsignedGraph, priorLog, refinedAuthority.authority);
@@ -182,6 +192,19 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     refinedAuthority.authority,
     precision,
   );
+
+  let debugResult: QueryPropagationDebugResult | undefined;
+  if (debug && priorLogBeforeTagMerge) {
+    const tagPriorLog = new Float64Array(nodeCount);
+    for (let i = 0; i < tagIndices.length; i++) {
+      tagPriorLog[tagIndices[i]] = tagPriorLogCompact[i];
+    }
+    debugResult = {
+      priorLog: priorLogBeforeTagMerge,
+      tagPriorLog,
+      initialAuthority: initialAuthority.authority,
+    };
+  }
 
   return {
     relevance: relevanceRun.relevance,
@@ -192,6 +215,7 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
       relevance: relevanceRun.iterations,
       authority: initialAuthority.iterations + refinedAuthority.iterations,
     },
+    debug: debugResult,
   };
 }
 
@@ -209,6 +233,7 @@ export function queryInputFromCsr(
     alpha: number;
     maxIterations: number;
     tolerance: number;
+    debug?: boolean;
   },
 ): Omit<QueryPropagationInputPayload, 'mode'> {
   const wordCounts = csr.nodeByIndex.map((node) => node.wordCount ?? null);

@@ -33,13 +33,21 @@ function isQueryInput(input: WorkerInput): input is QueryPropagationInputPayload
 }
 
 function serializeQueryResult(result: ReturnType<typeof runQueryPropagation>): QueryPropagationResultPayload {
-  return {
+  const payload: QueryPropagationResultPayload = {
     relevance: [...result.relevance],
     authority: [...result.authority],
     precision: [...result.precision],
     expectedInfo: [...result.expectedInfo],
     iterations: { ...result.iterations },
   };
+  if (result.debug) {
+    payload.debug = {
+      priorLog: [...result.debug.priorLog],
+      tagPriorLog: [...result.debug.tagPriorLog],
+      initialAuthority: [...result.debug.initialAuthority],
+    };
+  }
+  return payload;
 }
 
 self.onmessage = (event: MessageEvent<WorkerRequest>) => {

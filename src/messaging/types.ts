@@ -1,4 +1,5 @@
 import type { PageData } from '../ao3/types';
+import type { SearchTrace, SearchTraceInfo } from '../debug/searchTrace';
 import type { GraphExport, GraphImportMode, GraphStats, StatsImportProgress } from '../graph/types';
 
 export type PositiveSeed =
@@ -52,6 +53,13 @@ export interface QueryPropagationInputPayload {
   alpha: number;
   maxIterations: number;
   tolerance: number;
+  debug?: boolean;
+}
+
+export interface QueryPropagationDebugPayload {
+  priorLog: number[];
+  tagPriorLog: number[];
+  initialAuthority: number[];
 }
 
 export interface QueryPropagationResultPayload {
@@ -60,6 +68,7 @@ export interface QueryPropagationResultPayload {
   precision: number[];
   expectedInfo: number[];
   iterations: { relevance: number; authority: number };
+  debug?: QueryPropagationDebugPayload;
 }
 
 export interface PropagationInputPayload {
@@ -124,7 +133,11 @@ export type ExtensionMessage =
   | { type: 'GraphStats'; stats: GraphStats }
   | { type: 'StatsImportProgress'; payload: StatsImportProgress }
   | { type: 'SearchProgress'; payload: SearchProgressPayload }
-  | { type: 'SearchResults'; payload: SearchResultsPayload };
+  | { type: 'SearchResults'; payload: SearchResultsPayload }
+  | { type: 'ExportSearchTrace' }
+  | { type: 'SearchTraceExported'; trace: SearchTrace | null }
+  | { type: 'GetSearchTrace' }
+  | { type: 'SearchTraceInfo'; info: SearchTraceInfo };
 
 export function isExtensionMessage(value: unknown): value is ExtensionMessage {
   if (!value || typeof value !== 'object') return false;

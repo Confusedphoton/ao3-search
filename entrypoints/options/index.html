@@ -36,6 +36,22 @@
         <button id="import-stats" type="button" disabled>Import stats</button>
         <p id="stats-status" class="status" hidden></p>
       </section>
+
+      <section class="dev-section">
+        <h2>Developer</h2>
+        <p class="hint">
+          Record full graph and propagation state at each search expansion step. Summaries appear in
+          the extension service worker console.
+        </p>
+
+        <label class="checkbox-row">
+          <input id="debug-search-trace" type="checkbox" />
+          Enable search trace (dev)
+        </label>
+
+        <p id="trace-info" class="status"></p>
+        <button id="download-search-trace" type="button" disabled>Download last search trace</button>
+      </section>
     </main>
     <script type="module" src="./main.ts"></script>
   </body>

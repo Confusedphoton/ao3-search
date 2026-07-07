@@ -9,6 +9,8 @@ import type {
   SearchResultItem,
 } from '@/src/messaging/types';
 import { EXPANSION_BUDGET, MAX_NEGATIVE_SEEDS, MAX_SEEDS } from '@/src/config/constants';
+import { isSearchTraceEnabled } from '@/src/config/debug';
+import { searchTraceInfo, type SearchTrace } from '@/src/debug/searchTrace';
 import { mergeAuthorPage, mergeSearchPage, mergeTagPage, mergeWorkPage, searchTagNodes } from '@/src/storage/db';
 import { exportGraph, getGraphStats, importGraph, parseGraphExport } from '@/src/storage/graphIo';
 import { resolveGraphTagName } from '@/src/storage/tagCanonical';
@@ -22,6 +24,7 @@ let searching = false;
 let orchestrator: SearchOrchestrator | null = null;
 let lastResults: SearchResultItem[] = [];
 let lastProgress: SearchProgressPayload | null = null;
+let lastSearchTrace: SearchTrace | null = null;
 let ready: Promise<void> | null = null;
 
 async function persistUiState(): Promise<void> {
@@ -557,7 +560,9 @@ onMessage(async (message, sender) => {
       searching = true;
       lastResults = [];
       lastProgress = null;
-      orchestrator = new SearchOrchestrator();
+      lastSearchTrace = null;
+      const traceEnabled = await isSearchTraceEnabled();
+      orchestrator = new SearchOrchestrator({ traceEnabled });
       void runSearch(orchestrator, 'start');
       await persistUiState();
       await publishState();
@@ -568,12 +573,20 @@ onMessage(async (message, sender) => {
       if (searching || seeds.length === 0 || lastResults.length === 0) return stateUpdate(searching);
       const initialRequestsUsed = lastProgress?.requestsUsed ?? 0;
       searching = true;
-      orchestrator = new SearchOrchestrator();
+      lastSearchTrace = null;
+      const traceEnabled = await isSearchTraceEnabled();
+      orchestrator = new SearchOrchestrator({ traceEnabled });
       void runSearch(orchestrator, 'continue', initialRequestsUsed);
       await persistUiState();
       await publishState();
       return stateUpdate(true);
     }
+
+    case 'ExportSearchTrace':
+      return { type: 'SearchTraceExported', trace: lastSearchTrace };
+
+    case 'GetSearchTrace':
+      return { type: 'SearchTraceInfo', info: searchTraceInfo(lastSearchTrace) };
 
     default:
       return undefined;
@@ -604,8 +617,17 @@ async function runSearch(
         ? search.continueRun(seeds, negativeSeeds, initialRequestsUsed, onSearchProgress)
         : search.run(seeds, negativeSeeds, onSearchProgress);
 
-    const { results, requestsUsed } = await run;
+    const { results, requestsUsed, trace } = await run;
     lastResults = results;
+    if (trace) {
+      lastSearchTrace = trace;
+      console.log(
+        '[ao3-search-trace] complete',
+        trace.searchId,
+        `${trace.steps.length} steps`,
+        `${trace.steps[trace.steps.length - 1]?.nodeTable.length ?? 0} nodes`,
+      );
+    }
     if (!lastProgress || lastProgress.phase !== 'done') {
       lastProgress = {
         phase: 'done',

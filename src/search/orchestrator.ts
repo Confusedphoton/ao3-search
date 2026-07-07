@@ -9,6 +9,15 @@ import {
   TOP_RESULTS,
 } from '../config/constants';
 import {
+  buildNodeTable,
+  nodeKindLabel,
+  SearchTraceRecorder,
+  snapshotCsr,
+  snapshotFrontier,
+  snapshotPropagation,
+  type SearchTrace,
+} from '../debug/searchTrace';
+import {
   buildCSR,
   seedIndicesForNegativeSeeds,
   seedIndicesForPositiveSeeds,
@@ -25,11 +34,21 @@ import { buildFrontier, maxFrontierExpectedInfo, pickNextFrontier } from './fron
 export interface SearchRunResult {
   results: SearchResultItem[];
   requestsUsed: number;
+  trace?: SearchTrace;
+}
+
+export interface SearchOrchestratorOptions {
+  traceEnabled?: boolean;
 }
 
 export class SearchOrchestrator {
   private scheduler = new RequestScheduler();
   private cancelled = false;
+  private traceEnabled: boolean;
+
+  constructor(options: SearchOrchestratorOptions = {}) {
+    this.traceEnabled = options.traceEnabled ?? false;
+  }
 
   cancel(): void {
     this.cancelled = true;
@@ -66,6 +85,9 @@ export class SearchOrchestrator {
     this.cancelled = false;
     const continuing = options.continueFromRequests > 0;
     const forceExpand = options.forceExpand ?? false;
+    const recorder = this.traceEnabled
+      ? new SearchTraceRecorder({ positive: seeds, negative: negativeSeeds })
+      : null;
     const positiveKeys = seeds.map((s) => {
       if (s.kind === 'work') return { kind: 'work' as const, key: s.workId };
       if (s.kind === 'tag') return { kind: 'tag' as const, key: s.tagName };
@@ -106,7 +128,19 @@ export class SearchOrchestrator {
 
       if (this.cancelled) {
         await closeComputeHost();
-        return { results: [], requestsUsed };
+        return { results: [], requestsUsed, trace: recorder?.finish() };
+      }
+
+      if (recorder) {
+        const snapshot = await loadGraphSnapshot();
+        const csr = buildCSR(snapshot);
+        recorder.recordStep({
+          phase: 'cold-start',
+          requestsUsed,
+          nodeTable: buildNodeTable(csr),
+          graph: snapshot,
+          csr: snapshotCsr(csr),
+        });
       }
     } else {
       onProgress({
@@ -176,6 +210,7 @@ export class SearchOrchestrator {
           alpha: PPR_ALPHA,
           maxIterations: PPR_MAX_ITERATIONS,
           tolerance: PPR_TOLERANCE,
+          debug: this.traceEnabled,
         }),
       });
 
@@ -183,6 +218,18 @@ export class SearchOrchestrator {
       const authority = Float64Array.from(propagation.authority);
       const precision = Float64Array.from(propagation.precision);
       const frontier = buildFrontier(csr, relevance, authority, precision);
+
+      if (recorder) {
+        recorder.recordStep({
+          phase: 'iterate',
+          requestsUsed,
+          nodeTable: buildNodeTable(csr),
+          graph: snapshot,
+          csr: snapshotCsr(csr),
+          propagation: snapshotPropagation(propagation),
+          frontier: snapshotFrontier(frontier),
+        });
+      }
 
       emitPreview(csr, relevance, {
         phase: expansion === 0 && !continuing ? 'ranking' : 'expanding',
@@ -204,8 +251,22 @@ export class SearchOrchestrator {
       if (!next) break;
 
       const node = csr.nodeByIndex[next.index];
+      const pickedRank = frontier.findIndex((f) => f.nodeId === next.nodeId);
+      const pickedSnapshot = { ...next, rank: pickedRank >= 0 ? pickedRank : -1 };
       await this.scheduler.expandNode(node);
       requestsUsed++;
+
+      if (recorder) {
+        recorder.attachActionToLastStep({
+          picked: pickedSnapshot,
+          exploratory: forceExpand,
+          expandedNode: {
+            nodeId: node.id,
+            kind: nodeKindLabel(node.kind),
+            key: node.key,
+          },
+        });
+      }
 
       if (this.cancelled) break;
     }
@@ -222,8 +283,27 @@ export class SearchOrchestrator {
         alpha: PPR_ALPHA,
         maxIterations: PPR_MAX_ITERATIONS,
         tolerance: PPR_TOLERANCE,
+        debug: this.traceEnabled,
       }),
     });
+
+    if (recorder) {
+      const finalFrontier = buildFrontier(
+        finalCsr,
+        Float64Array.from(finalPropagation.relevance),
+        Float64Array.from(finalPropagation.authority),
+        Float64Array.from(finalPropagation.precision),
+      );
+      recorder.recordStep({
+        phase: 'final',
+        requestsUsed,
+        nodeTable: buildNodeTable(finalCsr),
+        graph: finalSnapshot,
+        csr: snapshotCsr(finalCsr),
+        propagation: snapshotPropagation(finalPropagation),
+        frontier: snapshotFrontier(finalFrontier),
+      });
+    }
 
     await closeComputeHost();
 
@@ -242,7 +322,7 @@ export class SearchOrchestrator {
       previewResults: results,
     });
 
-    return { results, requestsUsed };
+    return { results, requestsUsed, trace: recorder?.finish() };
   }
 }
 
