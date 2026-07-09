@@ -2,7 +2,7 @@ import type { NegativeSeed, PositiveSeed, SearchProgressPayload, SearchResultIte
 import {
   EXPANSION_BUDGET,
   MIN_FRONTIER_EXPECTED_INFO,
-  NEGATIVE_SEED_WEIGHT,
+  NEGATIVE_RELEVANCE_LAMBDA,
   PPR_ALPHA,
   PPR_MAX_ITERATIONS,
   PPR_TOLERANCE,
@@ -172,7 +172,7 @@ export class SearchOrchestrator {
         ...queryInputFromCsr(csr, {
           seedIndices,
           negativeSeedIndices,
-          negativeWeight: NEGATIVE_SEED_WEIGHT,
+          negativeLambda: NEGATIVE_RELEVANCE_LAMBDA,
           alpha: PPR_ALPHA,
           maxIterations: PPR_MAX_ITERATIONS,
           tolerance: PPR_TOLERANCE,
@@ -218,7 +218,7 @@ export class SearchOrchestrator {
       ...queryInputFromCsr(finalCsr, {
         seedIndices: finalSeeds,
         negativeSeedIndices: finalNegativeSeeds,
-        negativeWeight: NEGATIVE_SEED_WEIGHT,
+        negativeLambda: NEGATIVE_RELEVANCE_LAMBDA,
         alpha: PPR_ALPHA,
         maxIterations: PPR_MAX_ITERATIONS,
         tolerance: PPR_TOLERANCE,

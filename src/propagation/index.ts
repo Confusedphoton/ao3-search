@@ -1,5 +1,5 @@
 import {
-  NEGATIVE_SEED_WEIGHT,
+  NEGATIVE_RELEVANCE_LAMBDA,
   PPR_ALPHA,
   PPR_MAX_ITERATIONS,
   PPR_TOLERANCE,
@@ -7,6 +7,7 @@ import {
 import { runPropagation } from './engine';
 import { buildPropagationGraphFromArrays } from './queryGraph';
 import {
+  contrastRelevance,
   createRelevanceSignal,
   createSeedContext,
   RELEVANCE_SIGNAL_ID,
@@ -22,6 +23,7 @@ export { buildTransitionWeights } from './queryGraph';
 export {
   RELEVANCE_SIGNAL_ID,
   buildRelevanceTeleport,
+  contrastRelevance,
   createRelevanceSignal,
   createSeedContext,
   relevanceUpdateRule,
@@ -60,14 +62,18 @@ export interface RelevancePropagationInput {
   rowOutFractions?: number[] | Float64Array;
   seedIndices: number[];
   negativeSeedIndices?: number[];
-  negativeWeight?: number;
+  /** Multiplier λ for score = r⁺ − λ r⁻. Defaults to NEGATIVE_RELEVANCE_LAMBDA. */
+  negativeLambda?: number;
   alpha?: number;
   maxIterations?: number;
   tolerance?: number;
 }
 
 export interface RelevancePropagationResult {
+  /** Contrast score r⁺ − λ r⁻ (equals r⁺ when there are no negatives). */
   relevance: Float64Array;
+  positiveRelevance: Float64Array;
+  negativeRelevance: Float64Array | null;
   iterations: number;
   delta: number;
 }
@@ -87,6 +93,35 @@ export function createSignals(
   });
 }
 
+function runUnsignedRelevancePpr(
+  offsets: number[],
+  neighbors: number[],
+  edgeWeights: number[],
+  rowOutFractions: number[] | Float64Array | undefined,
+  seedIndices: number[],
+  params: PropagationParams,
+): { relevance: Float64Array; iterations: number; delta: number } {
+  const nodeCount = offsets.length - 1;
+  if (seedIndices.length === 0) {
+    return { relevance: new Float64Array(nodeCount), iterations: 0, delta: 0 };
+  }
+
+  const graph = buildPropagationGraphFromArrays(
+    offsets,
+    neighbors,
+    edgeWeights,
+    [],
+    rowOutFractions,
+  );
+  const context = createSeedContext(nodeCount, seedIndices);
+  const result = runPropagation(graph, [createRelevanceSignal(context)], params);
+  return {
+    relevance: result.signals[RELEVANCE_SIGNAL_ID] ?? new Float64Array(nodeCount),
+    iterations: result.iterations,
+    delta: result.deltas[RELEVANCE_SIGNAL_ID] ?? 0,
+  };
+}
+
 export function runRelevancePropagation(
   input: RelevancePropagationInput,
 ): RelevancePropagationResult {
@@ -97,39 +132,51 @@ export function runRelevancePropagation(
     rowOutFractions,
     seedIndices,
     negativeSeedIndices = [],
-    negativeWeight = NEGATIVE_SEED_WEIGHT,
+    negativeLambda = NEGATIVE_RELEVANCE_LAMBDA,
     alpha = PPR_ALPHA,
     maxIterations = PPR_MAX_ITERATIONS,
     tolerance = PPR_TOLERANCE,
   } = input;
 
   const nodeCount = offsets.length - 1;
-  const relevance = new Float64Array(nodeCount);
+  const empty = new Float64Array(nodeCount);
 
   if (seedIndices.length === 0 && negativeSeedIndices.length === 0) {
-    return { relevance, iterations: 0, delta: 0 };
+    return {
+      relevance: empty,
+      positiveRelevance: empty,
+      negativeRelevance: null,
+      iterations: 0,
+      delta: 0,
+    };
   }
 
-  const graph = buildPropagationGraphFromArrays(
+  const params: PropagationParams = { alpha, maxIterations, tolerance };
+  const positive = runUnsignedRelevancePpr(
     offsets,
     neighbors,
     edgeWeights,
-    negativeSeedIndices,
     rowOutFractions,
-  );
-  const context = createSeedContext(
-    nodeCount,
     seedIndices,
-    negativeSeedIndices,
-    negativeWeight,
+    params,
   );
-  const params: PropagationParams = { alpha, maxIterations, tolerance };
-  const result = runPropagation(graph, [createRelevanceSignal(context)], params);
+  const negative = runUnsignedRelevancePpr(
+    offsets,
+    neighbors,
+    edgeWeights,
+    rowOutFractions,
+    negativeSeedIndices,
+    params,
+  );
+  const negativeRelevance =
+    negativeSeedIndices.length > 0 ? negative.relevance : null;
 
   return {
-    relevance: result.signals[RELEVANCE_SIGNAL_ID] ?? relevance,
-    iterations: result.iterations,
-    delta: result.deltas[RELEVANCE_SIGNAL_ID] ?? 0,
+    relevance: contrastRelevance(positive.relevance, negativeRelevance, negativeLambda),
+    positiveRelevance: positive.relevance,
+    negativeRelevance,
+    iterations: positive.iterations + negative.iterations,
+    delta: Math.max(positive.delta, negative.delta),
   };
 }
 
@@ -147,7 +194,6 @@ export function runMultiSignalPropagation(
     rowOutFractions,
     seedIndices,
     negativeSeedIndices = [],
-    negativeWeight = NEGATIVE_SEED_WEIGHT,
     alpha = PPR_ALPHA,
     maxIterations = PPR_MAX_ITERATIONS,
     tolerance = PPR_TOLERANCE,
@@ -168,19 +214,15 @@ export function runMultiSignalPropagation(
     return { signals: emptySignals, iterations: 0, deltas: {} };
   }
 
+  // Multi-signal path remains positive-seed only; dual contrast is query/relevance API.
   const graph = buildPropagationGraphFromArrays(
     offsets,
     neighbors,
     edgeWeights,
-    negativeSeedIndices,
+    [],
     rowOutFractions,
   );
-  const context = createSeedContext(
-    nodeCount,
-    seedIndices,
-    negativeSeedIndices,
-    negativeWeight,
-  );
+  const context = createSeedContext(nodeCount, seedIndices, negativeSeedIndices);
   const params: PropagationParams = { alpha, maxIterations, tolerance };
   const signals = createSignals(signalIds, context);
 

@@ -40,7 +40,7 @@ describe('RequestScheduler.ensureNegativeSeeds', () => {
     vi.unstubAllGlobals();
   });
 
-  it('does not refetch listing works that are not explored', async () => {
+  it('fully explores listing works that are not yet explored', async () => {
     const before = await getWorkNode('100');
     expect(before?.explored).toBe(false);
 
@@ -53,9 +53,12 @@ describe('RequestScheduler.ensureNegativeSeeds', () => {
       },
     ]);
 
-    expect(fetch).not.toHaveBeenCalled();
+    expect(fetch).toHaveBeenCalledWith(
+      'https://archiveofourown.org/works/100',
+      expect.objectContaining({ headers: { Accept: 'text/html' } }),
+    );
     const after = await getWorkNode('100');
-    expect(after?.explored).toBe(false);
+    expect(after?.explored).toBe(true);
   });
 
   it('fetches works that are not yet in the graph', async () => {
@@ -74,5 +77,28 @@ describe('RequestScheduler.ensureNegativeSeeds', () => {
     );
     const node = await getWorkNode('200');
     expect(node?.explored).toBe(true);
+  });
+
+  it('skips works that are already explored', async () => {
+    await scheduler.ensureNegativeSeeds([
+      {
+        kind: 'work',
+        workId: '200',
+        title: 'Fetched Work',
+        url: 'https://archiveofourown.org/works/200',
+      },
+    ]);
+    vi.mocked(fetch).mockClear();
+
+    await scheduler.ensureNegativeSeeds([
+      {
+        kind: 'work',
+        workId: '200',
+        title: 'Fetched Work',
+        url: 'https://archiveofourown.org/works/200',
+      },
+    ]);
+
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

@@ -2,7 +2,7 @@
   "name": "ao3-search",
   "description": "AO3 semantic search via Personalized PageRank",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",

@@ -42,7 +42,8 @@ export interface QueryPropagationInputPayload {
   rowOutFractions?: number[];
   seedIndices: number[];
   negativeSeedIndices?: number[];
-  negativeWeight?: number;
+  /** Multiplier λ for score = r⁺ − λ r⁻. */
+  negativeLambda?: number;
   workIndices: number[];
   tagIndices: number[];
   authorIndices: number[];
@@ -56,6 +57,8 @@ export interface QueryPropagationInputPayload {
 
 export interface QueryPropagationResultPayload {
   relevance: number[];
+  positiveRelevance: number[];
+  negativeRelevance: number[] | null;
   authority: number[];
   precision: number[];
   expectedInfo: number[];
@@ -70,7 +73,7 @@ export interface PropagationInputPayload {
   rowOutFractions?: number[];
   seedIndices: number[];
   negativeSeedIndices?: number[];
-  negativeWeight?: number;
+  negativeLambda?: number;
   signalIds: string[];
   alpha: number;
   maxIterations: number;

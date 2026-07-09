@@ -107,17 +107,23 @@ describe('synthetic graph relevance propagation', () => {
     expect(result.relevance[graph.author('writer')]).toBeGreaterThan(0);
   });
 
-  it('penalizes nodes near a negative seed sink', () => {
+  it('down-ranks nodes near a negative seed via dual PPR contrast', () => {
     const graph = lineGraph(3);
     const positiveOnly = runRelevancePropagation(
       graph.relevanceInput({ seedIndices: [0] }),
     );
-    const signed = runRelevancePropagation(
-      graph.relevanceInput({ seedIndices: [0], negativeSeedIndices: [2] }),
+    const contrasted = runRelevancePropagation(
+      graph.relevanceInput({
+        seedIndices: [0],
+        negativeSeedIndices: [2],
+        negativeLambda: 3,
+      }),
     );
 
-    expect(signed.relevance[2]).toBeLessThan(positiveOnly.relevance[2]);
-    expect(signed.relevance[2]).toBeLessThan(0);
+    expect(contrasted.relevance[2]).toBeLessThan(positiveOnly.relevance[2]);
+    expect(contrasted.negativeRelevance![2]).toBeGreaterThan(
+      contrasted.negativeRelevance![0],
+    );
   });
 
   it('down-ranks works connected to a negatively seeded shared tag', () => {
@@ -125,19 +131,42 @@ describe('synthetic graph relevance propagation', () => {
     const positiveOnly = runRelevancePropagation(
       graph.relevanceInput({ positive: { works: ['keep'] } }),
     );
-    const signed = runRelevancePropagation(
+    const contrasted = runRelevancePropagation(
       graph.relevanceInput({
         positive: { works: ['keep'] },
         negative: { tags: ['shared'] },
+        negativeLambda: 3,
       }),
     );
 
-    expect(signed.relevance[graph.tag('shared')]).toBeLessThan(0);
-    expect(signed.relevance[graph.work('avoid')]).toBeLessThan(
+    expect(contrasted.relevance[graph.work('avoid')]).toBeLessThan(
       positiveOnly.relevance[graph.work('avoid')],
     );
-    expect(signed.relevance[graph.work('keep')]).toBeGreaterThan(
-      signed.relevance[graph.work('avoid')],
+    expect(contrasted.relevance[graph.work('keep')]).toBeGreaterThan(
+      contrasted.relevance[graph.work('avoid')],
+    );
+    expect(contrasted.negativeRelevance![graph.tag('shared')]).toBeGreaterThan(0);
+  });
+
+  it('prefers theme-only works over works that also carry a negative tag', () => {
+    const graph = syntheticGraph()
+      .tag({ key: 'theme' })
+      .tag({ key: 'avoid-me' })
+      .work({ key: 'seed', tags: ['theme'], wordCount: 3000, explored: true })
+      .work({ key: 'clean', tags: ['theme'], wordCount: 3000 })
+      .work({ key: 'tainted', tags: ['theme', 'avoid-me'], wordCount: 3000 })
+      .build();
+
+    const result = runRelevancePropagation(
+      graph.relevanceInput({
+        positive: { works: ['seed'] },
+        negative: { tags: ['avoid-me'] },
+        negativeLambda: 3,
+      }),
+    );
+
+    expect(result.relevance[graph.work('clean')]).toBeGreaterThan(
+      result.relevance[graph.work('tainted')],
     );
   });
 
@@ -216,5 +245,29 @@ describe('synthetic graph query propagation', () => {
     expect(result.authority[graph.work('long')]).toBeGreaterThan(
       result.authority[graph.work('short')],
     );
+  });
+
+  it('down-ranks tainted works under dual PPR contrast', () => {
+    const graph = syntheticGraph()
+      .tag({ key: 'theme' })
+      .tag({ key: 'mcd' })
+      .work({ key: 'seed', tags: ['theme'], wordCount: 4000, explored: true })
+      .work({ key: 'clean', tags: ['theme'], wordCount: 3000 })
+      .work({ key: 'tainted', tags: ['theme', 'mcd'], wordCount: 3000 })
+      .build();
+
+    const result = runQueryPropagation(
+      graph.queryInput({
+        positive: { works: ['seed'] },
+        negative: { tags: ['mcd'] },
+        negativeLambda: 3,
+      }),
+    );
+
+    expect(result.relevance[graph.work('clean')]).toBeGreaterThan(
+      result.relevance[graph.work('tainted')],
+    );
+    expect(result.negativeRelevance).not.toBeNull();
+    expect(result.negativeRelevance![graph.tag('mcd')]).toBeGreaterThan(0);
   });
 });

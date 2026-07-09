@@ -129,23 +129,21 @@ export class RequestScheduler {
   }
 
   async ensureNegativeSeeds(negativeSeeds: NegativeSeed[]): Promise<void> {
+    // Fetch parity with positives: dual-PPR contrast needs the negative
+    // neighborhood (tags/works/authors) present so r⁻ can spread.
     for (const seed of negativeSeeds) {
       if (seed.kind === 'work') {
-        // Negative work seeds only need a graph node for teleport/signing; listing
-        // blurbs are enough — full exploration is not required.
-        if (await getWorkNode(seed.workId)) continue;
+        const existing = await getWorkNode(seed.workId);
+        if (existing?.explored) continue;
         await this.fetchWork(seed.workId);
         continue;
       }
 
       if (seed.kind === 'tag') {
-        const canonicalName = await resolveGraphTagName(seed.tagName);
-        if (await getTagNode(canonicalName)) continue;
         await this.ensureTagSeed(seed.tagName);
         continue;
       }
 
-      if (await getAuthorNode(seed.authorKey)) continue;
       await this.ensureAuthorSeed(seed.authorKey);
     }
   }

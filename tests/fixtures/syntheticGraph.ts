@@ -62,7 +62,7 @@ export interface PropagationRunOptions extends Partial<typeof DEFAULT_PROPAGATIO
   negative?: SeedSelection;
   seedIndices?: number[];
   negativeSeedIndices?: number[];
-  negativeWeight?: number;
+  negativeLambda?: number;
   rowOutFractions?: number[] | Float64Array;
 }
 
@@ -345,7 +345,7 @@ export class SyntheticGraph {
       rowOutFractions: options.rowOutFractions ?? this.rowOutFractions,
       seedIndices,
       negativeSeedIndices,
-      negativeWeight: options.negativeWeight,
+      negativeLambda: options.negativeLambda,
       alpha: options.alpha ?? DEFAULT_PROPAGATION_PARAMS.alpha,
       maxIterations: options.maxIterations ?? DEFAULT_PROPAGATION_PARAMS.maxIterations,
       tolerance: options.tolerance ?? DEFAULT_PROPAGATION_PARAMS.tolerance,
@@ -363,7 +363,7 @@ export class SyntheticGraph {
       rowOutFractions: options.rowOutFractions ?? this.rowOutFractions,
       seedIndices,
       negativeSeedIndices,
-      negativeWeight: options.negativeWeight,
+      negativeLambda: options.negativeLambda,
       workIndices: this.workIndices,
       tagIndices: this.tagIndices,
       authorIndices: this.authorIndices,

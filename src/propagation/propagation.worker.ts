@@ -35,6 +35,8 @@ function isQueryInput(input: WorkerInput): input is QueryPropagationInputPayload
 function serializeQueryResult(result: ReturnType<typeof runQueryPropagation>): QueryPropagationResultPayload {
   return {
     relevance: [...result.relevance],
+    positiveRelevance: [...result.positiveRelevance],
+    negativeRelevance: result.negativeRelevance ? [...result.negativeRelevance] : null,
     authority: [...result.authority],
     precision: [...result.precision],
     expectedInfo: [...result.expectedInfo],

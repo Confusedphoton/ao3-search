@@ -38,6 +38,6 @@ export interface PropagationResult {
 export interface SeedContext {
   nodeCount: number;
   seedIndices: number[];
+  /** Retained for callers; dual-PPR contrast applies negatives outside teleport. */
   negativeSeedIndices: number[];
-  negativeWeight: number;
 }

@@ -1,4 +1,3 @@
-import { NEGATIVE_SEED_WEIGHT } from '../../config/constants';
 import { pageRankUpdateRule } from '../rules/pageRankStep';
 import type { SeedContext, SignalInstance, SignalUpdateRule } from '../types';
 
@@ -14,14 +13,27 @@ export function buildRelevanceTeleport(context: SeedContext): Float64Array {
     }
   }
 
-  if (context.negativeSeedIndices.length > 0) {
-    const sinkWeight = context.negativeWeight / context.negativeSeedIndices.length;
-    for (const index of context.negativeSeedIndices) {
-      teleport[index] -= sinkWeight;
-    }
+  return teleport;
+}
+
+/**
+ * Contrast positive and negative Personalized PageRank into a ranking score:
+ * score = r⁺ − λ r⁻.
+ */
+export function contrastRelevance(
+  positiveRelevance: Float64Array,
+  negativeRelevance: Float64Array | null,
+  lambda: number,
+): Float64Array {
+  if (!negativeRelevance || lambda === 0) {
+    return positiveRelevance;
   }
 
-  return teleport;
+  const score = new Float64Array(positiveRelevance.length);
+  for (let i = 0; i < score.length; i++) {
+    score[i] = positiveRelevance[i] - lambda * negativeRelevance[i];
+  }
+  return score;
 }
 
 export const relevanceUpdateRule: SignalUpdateRule = pageRankUpdateRule;
@@ -41,7 +53,6 @@ export function createSeedContext(
   nodeCount: number,
   seedIndices: number[],
   negativeSeedIndices: number[] = [],
-  negativeWeight: number = NEGATIVE_SEED_WEIGHT,
 ): SeedContext {
-  return { nodeCount, seedIndices, negativeSeedIndices, negativeWeight };
+  return { nodeCount, seedIndices, negativeSeedIndices };
 }

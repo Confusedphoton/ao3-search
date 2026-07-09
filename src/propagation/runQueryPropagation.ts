@@ -1,5 +1,5 @@
 import {
-  NEGATIVE_SEED_WEIGHT,
+  NEGATIVE_RELEVANCE_LAMBDA,
   PPR_ALPHA,
   PPR_MAX_ITERATIONS,
   PPR_TOLERANCE,
@@ -17,6 +17,7 @@ import {
 import { buildPropagationGraphFromArrays } from './queryGraph';
 import { createAuthoritySignal, AUTHORITY_SIGNAL_ID } from './signals/authority';
 import {
+  contrastRelevance,
   createSeedContext,
   createRelevanceSignal,
   RELEVANCE_SIGNAL_ID,
@@ -31,7 +32,8 @@ export interface QueryPropagationInput {
   rowOutFractions?: number[] | Float64Array;
   seedIndices: number[];
   negativeSeedIndices?: number[];
-  negativeWeight?: number;
+  /** Multiplier λ for score = r⁺ − λ r⁻. Defaults to NEGATIVE_RELEVANCE_LAMBDA. */
+  negativeLambda?: number;
   workIndices: number[];
   tagIndices: number[];
   authorIndices: number[];
@@ -44,7 +46,12 @@ export interface QueryPropagationInput {
 }
 
 export interface QueryPropagationResult {
+  /** Contrast score r⁺ − λ r⁻ used for ranking and frontier expectedInfo. */
   relevance: Float64Array;
+  /** Positive-seed PPR (unsigned). */
+  positiveRelevance: Float64Array;
+  /** Negative-seed PPR (unsigned), or null when there are no negative seeds. */
+  negativeRelevance: Float64Array | null;
   authority: Float64Array;
   precision: Float64Array;
   expectedInfo: Float64Array;
@@ -81,20 +88,17 @@ function runAuthorityPropagation(
   };
 }
 
-function runRelevancePropagation(
+function runUnsignedRelevance(
   graph: ReturnType<typeof buildPropagationGraphFromArrays>,
   seedIndices: number[],
-  negativeSeedIndices: number[],
-  negativeWeight: number,
   authority: Float64Array,
   params: PropagationParams,
 ): { relevance: Float64Array; iterations: number } {
-  const context = createSeedContext(
-    graph.nodeCount,
-    seedIndices,
-    negativeSeedIndices,
-    negativeWeight,
-  );
+  if (seedIndices.length === 0) {
+    return { relevance: new Float64Array(graph.nodeCount), iterations: 0 };
+  }
+
+  const context = createSeedContext(graph.nodeCount, seedIndices);
   const signal = createRelevanceSignal(context);
   signal.receiverWeights = authority;
   const result = runPropagation(graph, [signal], params);
@@ -112,7 +116,7 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     rowOutFractions,
     seedIndices,
     negativeSeedIndices = [],
-    negativeWeight = NEGATIVE_SEED_WEIGHT,
+    negativeLambda = NEGATIVE_RELEVANCE_LAMBDA,
     tagIndices,
     nodeKinds,
     alpha = PPR_ALPHA,
@@ -124,6 +128,8 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
   const empty = new Float64Array(nodeCount);
   const emptyResult: QueryPropagationResult = {
     relevance: empty,
+    positiveRelevance: empty,
+    negativeRelevance: null,
     authority: empty,
     precision: empty,
     expectedInfo: empty,
@@ -141,26 +147,30 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     [],
     rowOutFractions,
   );
-  const signedGraph = buildPropagationGraphFromArrays(
-    offsets,
-    neighbors,
-    edgeWeights,
-    negativeSeedIndices,
-    rowOutFractions,
-  );
   const params: PropagationParams = { alpha, maxIterations, tolerance };
 
   const priorCsr = buildPriorCsrView(input);
   const priorLog = buildPriorLog(priorCsr);
 
   const initialAuthority = runAuthorityPropagation(unsignedGraph, priorLog, params);
-  const relevanceRun = runRelevancePropagation(
-    signedGraph,
+  const positiveRun = runUnsignedRelevance(
+    unsignedGraph,
     seedIndices,
-    negativeSeedIndices,
-    negativeWeight,
     initialAuthority.authority,
     params,
+  );
+  const negativeRun = runUnsignedRelevance(
+    unsignedGraph,
+    negativeSeedIndices,
+    initialAuthority.authority,
+    params,
+  );
+  const negativeRelevance =
+    negativeSeedIndices.length > 0 ? negativeRun.relevance : null;
+  const relevance = contrastRelevance(
+    positiveRun.relevance,
+    negativeRelevance,
+    negativeLambda,
   );
 
   const tagPriorLog = computeTagPriorLogFromFlux({
@@ -171,25 +181,27 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     rowOutFractions: rowOutFractions ?? new Float64Array(nodeCount).fill(1),
     nodeKinds,
     tagIndices,
-    relevance: relevanceRun.relevance,
+    relevance: positiveRun.relevance,
   });
   mergeTagPriorLog(priorLog, tagIndices, tagPriorLog);
 
   const refinedAuthority = runAuthorityPropagation(unsignedGraph, priorLog, params);
   const precision = computePrecision(unsignedGraph, priorLog, refinedAuthority.authority);
   const expectedInfo = computeExpectedInfo(
-    relevanceRun.relevance,
+    relevance,
     refinedAuthority.authority,
     precision,
   );
 
   return {
-    relevance: relevanceRun.relevance,
+    relevance,
+    positiveRelevance: positiveRun.relevance,
+    negativeRelevance,
     authority: refinedAuthority.authority,
     precision,
     expectedInfo,
     iterations: {
-      relevance: relevanceRun.iterations,
+      relevance: positiveRun.iterations + negativeRun.iterations,
       authority: initialAuthority.iterations + refinedAuthority.iterations,
     },
   };
@@ -205,7 +217,7 @@ export function queryInputFromCsr(
   seeds: {
     seedIndices: number[];
     negativeSeedIndices?: number[];
-    negativeWeight?: number;
+    negativeLambda?: number;
     alpha: number;
     maxIterations: number;
     tolerance: number;

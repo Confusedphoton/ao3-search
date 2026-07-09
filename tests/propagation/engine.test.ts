@@ -69,7 +69,7 @@ describe('runRelevancePropagation', () => {
     expect(result.iterations).toBeGreaterThan(0);
   });
 
-  it('penalizes nodes connected to negative seed sinks', () => {
+  it('down-ranks nodes near negative seeds via dual PPR contrast', () => {
     const positiveOnly = runRelevancePropagation({
       offsets: [0, 1, 3, 4],
       neighbors: [1, 0, 2, 1],
@@ -80,18 +80,23 @@ describe('runRelevancePropagation', () => {
       tolerance: 1e-8,
     });
 
-    const signed = runRelevancePropagation({
+    const contrasted = runRelevancePropagation({
       offsets: [0, 1, 3, 4],
       neighbors: [1, 0, 2, 1],
       edgeWeights: [1, 1, 1, 1],
       seedIndices: [0],
       negativeSeedIndices: [2],
+      negativeLambda: 3,
       alpha: 0.5,
       maxIterations: 200,
       tolerance: 1e-8,
     });
 
-    expect(signed.relevance[2]).toBeLessThan(positiveOnly.relevance[2]);
-    expect(signed.relevance[2]).toBeLessThan(0);
+    expect(contrasted.relevance[2]).toBeLessThan(positiveOnly.relevance[2]);
+    expect(contrasted.negativeRelevance).not.toBeNull();
+    expect(contrasted.negativeRelevance![2]).toBeGreaterThan(
+      contrasted.negativeRelevance![0],
+    );
+    expect(contrasted.relevance[2]).toBeLessThan(contrasted.positiveRelevance[2]);
   });
 });
