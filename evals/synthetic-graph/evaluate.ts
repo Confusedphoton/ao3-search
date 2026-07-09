@@ -4,7 +4,7 @@ import { meanNdcgAtKs, ndcgAtK } from './ndcg';
 import { bfsDistances, extractDepthBall, maxFiniteDistance } from './subgraph';
 
 export const DEFAULT_K_SWEEP = [5, 10, 20, 25, 50] as const;
-export const DEFAULT_DEPTHS = [1, 2, 3, 4, 5] as const;
+export const DEFAULT_DEPTHS = [2, 3, 4, 5] as const;
 
 export interface EvaluateOptions {
   /** Search depths (hop radii) to evaluate. */

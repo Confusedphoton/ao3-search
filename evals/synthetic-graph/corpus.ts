@@ -33,6 +33,61 @@ export const DEFAULT_CORPUS_CONFIG: CorpusConfig = {
   seed: 42,
 };
 
+/**
+ * Named corpus sizes for the expanding-subgraph eval.
+ * Approximate work counts: small ~260, medium ~1.2k, large ~4k, xlarge ~12k, xxlarge ~35k.
+ */
+export const CORPUS_SIZE_PRESETS = {
+  small: DEFAULT_CORPUS_CONFIG,
+  medium: {
+    communities: 12,
+    worksPerCommunity: 90,
+    localTagsPerCommunity: 10,
+    bridgeTags: 6,
+    authorsPerCommunity: 8,
+    bridgeWorks: 40,
+    seed: 42,
+  },
+  large: {
+    communities: 20,
+    worksPerCommunity: 180,
+    localTagsPerCommunity: 12,
+    bridgeTags: 8,
+    authorsPerCommunity: 10,
+    bridgeWorks: 80,
+    seed: 42,
+  },
+  xlarge: {
+    communities: 30,
+    worksPerCommunity: 380,
+    localTagsPerCommunity: 14,
+    bridgeTags: 10,
+    authorsPerCommunity: 12,
+    bridgeWorks: 150,
+    seed: 42,
+  },
+  xxlarge: {
+    communities: 48,
+    worksPerCommunity: 700,
+    localTagsPerCommunity: 16,
+    bridgeTags: 14,
+    authorsPerCommunity: 14,
+    bridgeWorks: 300,
+    seed: 42,
+  },
+} as const satisfies Record<string, CorpusConfig>;
+
+export type CorpusSizePreset = keyof typeof CORPUS_SIZE_PRESETS;
+
+/** Expected minimum work counts used by eval smoke checks. */
+export const CORPUS_SIZE_MIN_WORKS: Record<CorpusSizePreset, number> = {
+  small: 100,
+  medium: 1_000,
+  large: 3_000,
+  xlarge: 10_000,
+  xxlarge: 30_000,
+};
+
 export interface EvalCorpus {
   graph: SyntheticGraph;
   config: CorpusConfig;

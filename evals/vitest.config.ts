@@ -10,7 +10,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['evals/**/*.eval.ts', 'evals/**/*.test.ts'],
-    testTimeout: 300_000,
+    // Per-test timeouts in evaluate.eval.ts override this for larger corpora.
+    testTimeout: 3_600_000,
     hookTimeout: 300_000,
   },
 });
