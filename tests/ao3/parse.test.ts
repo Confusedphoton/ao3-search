@@ -10,6 +10,7 @@ import {
   decodeAo3TagParam,
   encodeAo3TagParam,
   isSearchResultsUrl,
+  parseAuthorKeyFromHref,
   parseAuthorKeyFromUrl,
   parseTagNameFromUrl,
   tagWorksUrl,
@@ -263,5 +264,36 @@ describe('AO3 parsers', () => {
       parseAuthorKeyFromUrl('https://archiveofourown.org/users/Lake/pseuds/PseudName'),
     ).toBe('Lake/pseuds/PseudName');
     expect(parseAuthorKeyFromUrl('https://archiveofourown.org/users/login')).toBeNull();
+  });
+
+  it('ignores gift recipient links when parsing authors from blurbs', () => {
+    const giftHtml = `
+      <html><body>
+        <ol class="work index group">
+          <li class="work blurb">
+            <h4 class="heading">
+              <a href="/works/55555">Gift Fic</a>
+              by <a rel="author" href="/users/WriterOne">Writer One</a>
+              for <a href="/users/Junespriince/gifts">Junespriince</a>
+            </h4>
+          </li>
+        </ol>
+      </body></html>`;
+    const doc = new DOMParser().parseFromString(giftHtml, 'text/html');
+    const works = parseListedWorks(doc);
+    expect(works).toEqual([
+      {
+        workId: '55555',
+        title: 'Gift Fic',
+        tags: [],
+        authors: [{ key: 'WriterOne', displayName: 'Writer One' }],
+        wordCount: null,
+      },
+    ]);
+    expect(parseAuthorKeyFromHref('/users/Junespriince/gifts')).toBeNull();
+    expect(parseAuthorKeyFromHref('/users/Junespriince')).toBe('Junespriince');
+    expect(parseAuthorKeyFromHref('/users/Lake/pseuds/PseudName')).toBe(
+      'Lake/pseuds/PseudName',
+    );
   });
 });

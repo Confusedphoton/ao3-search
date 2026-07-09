@@ -8,7 +8,7 @@ export const selectors = {
   authorHeading: 'h2.heading',
   workBlurb: 'ol.work.index.group li.work.blurb',
   workBlurbTitle: 'h4.heading a[href*="/works/"], h3.title a[href*="/works/"]',
-  workBlurbAuthors: 'h4.heading a[href*="/users/"]',
+  workBlurbAuthors: 'h4.heading a[rel="author"]',
   workBlurbTags: 'h5.fandoms.heading a.tag, ul.tags.commas a.tag',
   workBlurbWords: 'dl.stats dd.words',
 } as const;

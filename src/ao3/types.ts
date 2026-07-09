@@ -108,12 +108,6 @@ export function parseTagNameFromUrl(url: string): string | null {
   return match ? decodeAo3TagParam(match[1]) : null;
 }
 
-export function parseAuthorKeyFromHref(href: string): string | null {
-  const match = href.match(/\/users\/([^?#]+)/);
-  if (!match) return null;
-  return match[1].replace(/\/$/, '');
-}
-
 const RESERVED_USER_PATHS = new Set([
   'login',
   'sign_up',
@@ -123,6 +117,17 @@ const RESERVED_USER_PATHS = new Set([
   'support',
   'besignedup',
 ]);
+
+/** Username or username/pseuds/pseud only — rejects /gifts, /bookmarks, etc. */
+export function parseAuthorKeyFromHref(href: string): string | null {
+  const match = href.match(
+    /\/users\/([^/?#]+(?:\/pseuds\/[^/?#]+)?)(?:\/works)?\/?(?:[?#]|$)/,
+  );
+  if (!match) return null;
+  const key = match[1].replace(/\/$/, '');
+  if (RESERVED_USER_PATHS.has(key.split('/')[0])) return null;
+  return key;
+}
 
 export function parseAuthorKeyFromUrl(url: string): string | null {
   const match = url.match(/\/users\/([^/?#]+(?:\/pseuds\/[^/?#]+)?)(?:\/works)?(?:[/?#]|$)/);
