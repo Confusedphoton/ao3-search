@@ -1,5 +1,10 @@
 import type { PageData } from '@/src/ao3/types';
-import { authorWorksUrl, parseAuthorKeyFromUrl, tagWorksUrl } from '@/src/ao3/types';
+import {
+  authorWorksUrl,
+  decodeAo3TagParam,
+  parseAuthorKeyFromUrl,
+  tagWorksUrl,
+} from '@/src/ao3/types';
 import type {
   ExtensionMessage,
   GraphTagMatch,
@@ -168,12 +173,13 @@ async function readTabPageInfo(tabId: number): Promise<{
       const url = location.href;
       const workMatch = url.match(/\/works\/(\d+)/);
       const tagMatch = url.match(/\/tags\/([^/]+)\/works/);
-      const tagName = tagMatch ? decodeURIComponent(tagMatch[1].replace(/\+/g, ' ')) : null;
+      // Return the raw path segment; background decodes AO3 *s*/*a*/… tokens.
+      const tagParam = tagMatch?.[1] ?? null;
       const title =
         document.querySelector('h2.title.heading')?.textContent?.trim() ??
         document.querySelector('h2.heading')?.textContent?.trim() ??
         document.title;
-      return { url, workId: workMatch?.[1] ?? null, tagName, title };
+      return { url, workId: workMatch?.[1] ?? null, tagParam, title };
     },
   });
 
@@ -181,12 +187,15 @@ async function readTabPageInfo(tabId: number): Promise<{
     (results[0]?.result as {
       url: string;
       workId: string | null;
-      tagName: string | null;
+      tagParam: string | null;
       title: string;
-    } | undefined) ?? { url: '', workId: null, tagName: null, title: '' };
+    } | undefined) ?? { url: '', workId: null, tagParam: null, title: '' };
 
   return {
-    ...raw,
+    url: raw.url,
+    workId: raw.workId,
+    tagName: raw.tagParam ? decodeAo3TagParam(raw.tagParam) : null,
+    title: raw.title,
     authorKey: parseAuthorKeyFromUrl(raw.url),
   };
 }

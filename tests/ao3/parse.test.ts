@@ -6,7 +6,14 @@ import {
   parseTagPageFromHtml,
   parseWorkPageFromHtml,
 } from '@/src/ao3';
-import { isSearchResultsUrl, parseAuthorKeyFromUrl } from '@/src/ao3/types';
+import {
+  decodeAo3TagParam,
+  encodeAo3TagParam,
+  isSearchResultsUrl,
+  parseAuthorKeyFromUrl,
+  parseTagNameFromUrl,
+  tagWorksUrl,
+} from '@/src/ao3/types';
 
 const workHtml = `
 <html><body>
@@ -31,7 +38,7 @@ const tagHtml = `
         <h5 class="fandoms heading"><a class="tag" href="/tags/Harry%20Potter">Harry Potter</a></h5>
       </div>
       <ul class="tags commas">
-        <li class="relationships"><a class="tag" href="/tags/Draco%20Malfoy%2FHarry%20Potter">Draco Malfoy/Harry Potter</a></li>
+        <li class="relationships"><a class="tag" href="/tags/Draco%20Malfoy*s*Harry%20Potter">Draco Malfoy/Harry Potter</a></li>
         <li class="freeforms"><a class="tag" href="/tags/Fluff">Fluff</a></li>
       </ul>
     </li>
@@ -206,6 +213,30 @@ describe('AO3 parsers', () => {
     ).toBe(true);
     expect(isSearchResultsUrl('https://archiveofourown.org/works/12345')).toBe(false);
     expect(isSearchResultsUrl('https://archiveofourown.org/tags/Fluff/works')).toBe(false);
+  });
+
+  it('encodes AO3 tag path tokens like Tag#to_param', () => {
+    expect(encodeAo3TagParam('M/M')).toBe('M*s*M');
+    expect(encodeAo3TagParam('F/F')).toBe('F*s*F');
+    expect(encodeAo3TagParam('Multi')).toBe('Multi');
+    expect(encodeAo3TagParam('A & B')).toBe('A%20*a*%20B');
+    expect(encodeAo3TagParam('Dr. Who')).toBe('Dr*d*%20Who');
+    expect(tagWorksUrl('M/M')).toBe('https://archiveofourown.org/tags/M*s*M/works');
+    expect(tagWorksUrl('Draco Malfoy/Harry Potter')).toBe(
+      'https://archiveofourown.org/tags/Draco%20Malfoy*s*Harry%20Potter/works',
+    );
+  });
+
+  it('decodes AO3 tag path tokens like Tag.from_param', () => {
+    expect(decodeAo3TagParam('M*s*M')).toBe('M/M');
+    expect(decodeAo3TagParam('A%20*a*%20B')).toBe('A & B');
+    expect(decodeAo3TagParam('Dr*d*%20Who')).toBe('Dr. Who');
+    expect(parseTagNameFromUrl('https://archiveofourown.org/tags/M*s*M/works')).toBe('M/M');
+    expect(
+      parseTagNameFromUrl(
+        'https://archiveofourown.org/tags/Draco%20Malfoy*s*Harry%20Potter/works',
+      ),
+    ).toBe('Draco Malfoy/Harry Potter');
   });
 
   it('parses pseud author keys from work links', () => {

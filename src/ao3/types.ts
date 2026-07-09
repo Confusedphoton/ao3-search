@@ -54,8 +54,44 @@ export function workUrl(workId: string): string {
   return `${AO3_ORIGIN}/works/${workId}`;
 }
 
+/**
+ * AO3 tag path encoding (Tag#to_param): replace URL-hostile characters with
+ * starred tokens before percent-encoding. e.g. "M/M" → "M*s*M".
+ * @see https://github.com/otwcode/otwarchive/blob/master/app/models/tag.rb
+ */
+export function encodeAo3TagParam(tagName: string): string {
+  const parameterized = tagName
+    .replaceAll('/', '*s*')
+    .replaceAll('&', '*a*')
+    .replaceAll('.', '*d*')
+    .replaceAll('?', '*q*')
+    .replaceAll('#', '*h*');
+  return encodeURIComponent(parameterized);
+}
+
+/** Inverse of encodeAo3TagParam (Tag.from_param + URI decode). */
+export function decodeAo3TagParam(param: string): string {
+  const decoded = decodeURIComponent(param.replace(/\+/g, ' '));
+  return decoded.replace(/\*[sadqh]\*/g, (token) => {
+    switch (token) {
+      case '*s*':
+        return '/';
+      case '*a*':
+        return '&';
+      case '*d*':
+        return '.';
+      case '*q*':
+        return '?';
+      case '*h*':
+        return '#';
+      default:
+        return token;
+    }
+  });
+}
+
 export function tagWorksUrl(tagName: string): string {
-  return `${AO3_ORIGIN}/tags/${encodeURIComponent(tagName)}/works`;
+  return `${AO3_ORIGIN}/tags/${encodeAo3TagParam(tagName)}/works`;
 }
 
 export function authorWorksUrl(authorKey: string): string {
@@ -69,7 +105,7 @@ export function parseWorkIdFromUrl(url: string): string | null {
 
 export function parseTagNameFromUrl(url: string): string | null {
   const match = url.match(/\/tags\/([^/]+)\/works/);
-  return match ? decodeURIComponent(match[1].replace(/\+/g, ' ')) : null;
+  return match ? decodeAo3TagParam(match[1]) : null;
 }
 
 export function parseAuthorKeyFromHref(href: string): string | null {
