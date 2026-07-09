@@ -57,6 +57,7 @@ export class RequestScheduler {
       tags: parsed.tags,
       authors: parsed.authors,
       wordCount: parsed.wordCount,
+      meta: parsed.meta,
       explored: true,
     });
   }

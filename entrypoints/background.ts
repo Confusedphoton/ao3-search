@@ -274,6 +274,7 @@ async function ingestPageData(payload: PageData): Promise<void> {
       tags: payload.tags,
       authors: payload.authors,
       wordCount: payload.wordCount,
+      meta: payload.meta,
       explored: true,
     });
   } else if (payload.kind === 'tag') {

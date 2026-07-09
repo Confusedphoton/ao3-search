@@ -21,6 +21,7 @@ import {
   settingsFromStorageChange,
   type TunableSettings,
 } from '@/src/config/settings';
+import { applyTheme } from '@/src/ui/theme';
 import { parseGraphExport } from '@/src/storage/graphIo';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
@@ -82,6 +83,34 @@ function renderTagSuggestionsFor(target: 'seed' | 'negative'): string {
         )
         .join('')}
     </ul>`;
+}
+
+function renderSeedChips(
+  items: Array<{ kind: 'work' | 'tag' | 'author'; key: string; label: string }>,
+  removeAttr: 'data-remove-seed' | 'data-remove-negative',
+  emptyMessage: string,
+): string {
+  if (items.length === 0) {
+    return `<p class="empty seed-chips-empty">${escapeHtml(emptyMessage)}</p>`;
+  }
+  return `
+    <div class="seed-chips" role="list">
+      ${items
+        .map(
+          (item) => `
+        <button
+          type="button"
+          class="seed-chip"
+          role="listitem"
+          title="Remove ${escapeAttr(item.label)}"
+          aria-label="Remove ${escapeAttr(item.label)}"
+          ${removeAttr}-kind="${item.kind}"
+          ${removeAttr}-key="${escapeAttr(item.key)}"
+          ${searching ? 'disabled' : ''}
+        >${escapeHtml(item.label)}</button>`,
+        )
+        .join('')}
+    </div>`;
 }
 
 function formatSearchStatus(progress: SearchProgressPayload): string {
@@ -160,30 +189,23 @@ function render(): void {
         </form>
         ${renderTagSuggestionsFor('seed')}
       </div>
-      <ul id="seed-list">
-        ${
-          seeds.length === 0
-            ? `<li class="empty">Add ${MIN_SEEDS}–${settings.maxSeeds} works, tags, or authors.</li>`
-            : seeds
-                .map(
-                  (seed) => `
-            <li>
-              <span class="seed-label">${escapeHtml(positiveSeedLabel(seed))}</span>
-              <span class="seed-kind">${seed.kind}</span>
-              <button data-remove-seed-kind="${seed.kind}" data-remove-seed-key="${escapeAttr(positiveSeedKey(seed))}" type="button" ${searching ? 'disabled' : ''}>Remove</button>
-            </li>`,
-                )
-                .join('')
-        }
-      </ul>
+      ${renderSeedChips(
+        seeds.map((seed) => ({
+          kind: seed.kind,
+          key: positiveSeedKey(seed),
+          label: positiveSeedLabel(seed),
+        })),
+        'data-remove-seed',
+        `Add ${MIN_SEEDS}–${settings.maxSeeds} works, tags, or authors.`,
+      )}
     </section>
 
-    <section class="negative-section">
+    <section>
       <div class="section-header">
         <h2>Avoid (${negativeSeeds.length}/${settings.maxNegativeSeeds})</h2>
         <button id="add-negative-work" type="button" ${searching ? 'disabled' : ''}>Add current tab</button>
       </div>
-      <p class="hint">Works, tags, or authors to penalize — e.g. Major Character Death.</p>
+      <p class="hint">Works, tags, or authors to penalize.</p>
       <div class="tag-search">
         <form id="add-negative-tag-form" class="tag-form">
           <input
@@ -198,22 +220,15 @@ function render(): void {
         </form>
         ${renderTagSuggestionsFor('negative')}
       </div>
-      <ul id="negative-seed-list">
-        ${
-          negativeSeeds.length === 0
-            ? '<li class="empty">Optional negative seeds.</li>'
-            : negativeSeeds
-                .map(
-                  (seed) => `
-            <li>
-              <span class="negative-label">${escapeHtml(negativeSeedLabel(seed))}</span>
-              <span class="negative-kind">${seed.kind}</span>
-              <button data-remove-negative-kind="${seed.kind}" data-remove-negative-key="${escapeAttr(negativeSeedKey(seed))}" type="button" ${searching ? 'disabled' : ''}>Remove</button>
-            </li>`,
-                )
-                .join('')
-        }
-      </ul>
+      ${renderSeedChips(
+        negativeSeeds.map((seed) => ({
+          kind: seed.kind,
+          key: negativeSeedKey(seed),
+          label: negativeSeedLabel(seed),
+        })),
+        'data-remove-negative',
+        'Optional negative seeds.',
+      )}
     </section>
 
     <section>
@@ -250,28 +265,6 @@ function render(): void {
                 .join('')
         }
       </ol>
-    </section>
-
-    <section class="suppressed-section">
-      <div class="section-header">
-        <h2>Hidden from results (${suppressedWorks.length})</h2>
-      </div>
-      <p class="hint">Skipped in the ranked list only — does not change scoring or the graph.</p>
-      <ul id="suppressed-list">
-        ${
-          suppressedWorks.length === 0
-            ? '<li class="empty">Hide works from an AO3 work page overlay.</li>'
-            : suppressedWorks
-                .map(
-                  (work) => `
-            <li>
-              <a href="${work.url}" target="_blank" rel="noopener" class="suppressed-label">${escapeHtml(work.title)}</a>
-              <button data-unsuppress-work="${escapeAttr(work.workId)}" type="button">Show again</button>
-            </li>`,
-                )
-                .join('')
-        }
-      </ul>
     </section>
 
     <section class="graph-section">
@@ -447,13 +440,6 @@ function bindEvents(): void {
       if ((kind === 'work' || kind === 'tag' || kind === 'author') && key) {
         void dispatch({ type: 'RemoveNegativeSeed', kind, key });
       }
-    });
-  });
-
-  document.querySelectorAll('[data-unsuppress-work]').forEach((el) => {
-    el.addEventListener('click', () => {
-      const workId = el.getAttribute('data-unsuppress-work');
-      if (workId) void dispatch({ type: 'UnsuppressWork', workId });
     });
   });
 
@@ -721,6 +707,7 @@ function normalizeStoredSuppressedWork(raw: unknown): SuppressedWork | null {
 
 async function loadInitialState(): Promise<void> {
   settings = await loadSettings();
+  applyTheme(settings.theme);
 
   try {
     const response = await sendMessage({ type: 'GetState' });
@@ -784,6 +771,7 @@ browser.storage.onChanged.addListener((changes, area) => {
   const next = settingsFromStorageChange(changes[SETTINGS_STORAGE_KEY]);
   if (!next) return;
   settings = next;
+  applyTheme(settings.theme);
   render();
 });
 

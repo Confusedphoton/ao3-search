@@ -4,6 +4,18 @@ export enum NodeKind {
   Author = 2,
 }
 
+export type CompletionStatus = 'Complete' | 'Incomplete';
+
+/** Typed AO3 work metadata used for permeability filtration (not graph tag edges). */
+export interface WorkMetadata {
+  language: string | null;
+  rating: string | null;
+  archiveWarnings: string[];
+  completionStatus: CompletionStatus | null;
+  fandoms: string[];
+  categories: string[];
+}
+
 export interface GraphNode {
   id: number;
   kind: NodeKind;
@@ -13,6 +25,8 @@ export interface GraphNode {
   estimatedFreq: number;
   calibratedFreq: number | null;
   explored: boolean;
+  /** Present on work nodes when scraped; omitted for tags/authors. */
+  meta?: WorkMetadata;
 }
 
 export interface GraphEdge {
@@ -91,6 +105,7 @@ export interface WorkMergeInput {
   authors: WorkAuthorInput[];
   wordCount?: number | null;
   explored?: boolean;
+  meta?: WorkMetadata;
 }
 
 export interface ListedWorkInput {
@@ -99,6 +114,7 @@ export interface ListedWorkInput {
   tags?: string[];
   authors?: WorkAuthorInput[];
   wordCount?: number | null;
+  meta?: WorkMetadata;
 }
 
 export interface SearchMergeInput {

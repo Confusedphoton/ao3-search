@@ -11,6 +11,7 @@ export interface TagFluxInput {
   nodeKinds: NodeKind[];
   tagIndices: number[];
   relevance: Float64Array;
+  nodePermeabilities?: Float64Array | number[];
 }
 
 export function computeTagPriorLogFromFlux(input: TagFluxInput): Float64Array {
@@ -23,9 +24,17 @@ export function computeTagPriorLogFromFlux(input: TagFluxInput): Float64Array {
     nodeKinds,
     tagIndices,
     relevance,
+    nodePermeabilities,
   } = input;
 
-  const transition = buildTransitionWeights(offsets, neighbors, edgeWeights, rowOutFractions);
+  const transition = buildTransitionWeights(
+    offsets,
+    neighbors,
+    edgeWeights,
+    rowOutFractions,
+    [],
+    nodePermeabilities,
+  );
   const boundaryFlux = new Float64Array(nodeCount);
   const internalFlux = new Float64Array(nodeCount);
 

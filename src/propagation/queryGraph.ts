@@ -3,6 +3,7 @@ import {
   signEdgesForNegativeSeeds,
   signEdgesForNegativeSeedsFromCsr,
 } from '../graph/signedQuery';
+import { applyPermeabilityFilter } from './permeability';
 import type { PropagationGraph } from './types';
 
 function defaultRowOutFractions(nodeCount: number): Float64Array {
@@ -15,6 +16,7 @@ export function buildTransitionWeights(
   edgeWeights: number[],
   rowOutFractions: Float64Array | number[],
   negativeSeedIndices: number[] = [],
+  nodePermeabilities?: Float64Array | number[],
 ): number[] {
   const signed = signEdgesForNegativeSeeds(
     offsets,
@@ -40,12 +42,17 @@ export function buildTransitionWeights(
     }
   }
 
+  if (nodePermeabilities) {
+    applyPermeabilityFilter(offsets, neighbors, transition, nodePermeabilities);
+  }
+
   return transition;
 }
 
 export function buildPropagationGraph(
   csr: CSRGraph,
   negativeSeedIndices: number[],
+  nodePermeabilities?: Float64Array | number[],
 ): PropagationGraph {
   return {
     nodeCount: csr.nodeCount,
@@ -57,6 +64,7 @@ export function buildPropagationGraph(
       csr.edgeWeights,
       csr.rowOutFractions,
       negativeSeedIndices,
+      nodePermeabilities,
     ),
   };
 }
@@ -67,6 +75,7 @@ export function buildPropagationGraphFromArrays(
   edgeWeights: number[],
   negativeSeedIndices: number[] = [],
   rowOutFractions?: Float64Array | number[],
+  nodePermeabilities?: Float64Array | number[],
 ): PropagationGraph {
   const nodeCount = offsets.length - 1;
   return {
@@ -79,6 +88,7 @@ export function buildPropagationGraphFromArrays(
       edgeWeights,
       rowOutFractions ?? defaultRowOutFractions(nodeCount),
       negativeSeedIndices,
+      nodePermeabilities,
     ),
   };
 }

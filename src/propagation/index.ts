@@ -21,6 +21,12 @@ export { buildPropagationGraph, buildPropagationGraphFromArrays } from './queryG
 export { applyPageRankStep, l1Normalize, pageRankUpdateRule } from './rules/pageRankStep';
 export { buildTransitionWeights } from './queryGraph';
 export {
+  applyPermeabilityFilter,
+  buildNodePermeabilities,
+  categoryPermeability,
+  workPermeability,
+} from './permeability';
+export {
   RELEVANCE_SIGNAL_ID,
   buildRelevanceTeleport,
   contrastRelevance,

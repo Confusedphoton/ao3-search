@@ -1,7 +1,14 @@
 export const selectors = {
   workMeta: 'dl.work.meta.group',
   workWords: 'dl.work.meta.group dd.words',
-  workTags: 'dl.work.meta.group dd.tags a.tag',
+  workChapters: 'dl.work.meta.group dd.chapters',
+  workLanguage: 'dl.work.meta.group dd.language',
+  workRating: 'dl.work.meta.group dd.rating.tags a.tag, dl.work.meta.group dd.rating a.tag',
+  workWarning: 'dl.work.meta.group dd.warning.tags a.tag, dl.work.meta.group dd.warning a.tag',
+  workCategory: 'dl.work.meta.group dd.category.tags a.tag, dl.work.meta.group dd.category a.tag',
+  workFandom: 'dl.work.meta.group dd.fandom.tags a.tag, dl.work.meta.group dd.fandom a.tag',
+  workTags:
+    'dl.work.meta.group dd.fandom.tags a.tag, dl.work.meta.group dd.relationship.tags a.tag, dl.work.meta.group dd.character.tags a.tag, dl.work.meta.group dd.freeform.tags a.tag, dl.work.meta.group dd.fandom a.tag, dl.work.meta.group dd.relationship a.tag, dl.work.meta.group dd.character a.tag, dl.work.meta.group dd.freeform a.tag',
   workAuthors: 'dl.work.meta.group dd.users a[href*="/users/"]',
   workTitle: 'h2.title.heading, h2.title, h1.title, #workskin h2.title.heading',
   tagHeading: 'h2.heading',
@@ -10,7 +17,15 @@ export const selectors = {
   workBlurbTitle: 'h4.heading a[href*="/works/"], h3.title a[href*="/works/"]',
   workBlurbAuthors: 'h4.heading a[rel="author"]',
   workBlurbTags: 'h5.fandoms.heading a.tag, ul.tags.commas a.tag',
+  workBlurbFandoms: 'h5.fandoms.heading a.tag',
+  workBlurbWarnings: 'ul.tags.commas li.warnings a.tag',
   workBlurbWords: 'dl.stats dd.words',
+  workBlurbLanguage: 'dl.stats dd.language',
+  workBlurbChapters: 'dl.stats dd.chapters',
+  workBlurbRequiredRating: 'ul.required-tags .rating',
+  workBlurbRequiredWarnings: 'ul.required-tags .warnings',
+  workBlurbRequiredCategory: 'ul.required-tags .category',
+  workBlurbRequiredWip: 'ul.required-tags .iswip',
 } as const;
 
 export const tagCountPattern = /([\d,]+)\s+Works?/i;

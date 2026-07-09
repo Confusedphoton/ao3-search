@@ -1,4 +1,5 @@
 import { DB_NAME, DB_VERSION } from '../config/constants';
+import { mergeWorkMetadata, normalizeWorkMetadata } from '../ao3/workMeta';
 import type {
   AuthorMergeInput,
   AuthorWorkEdge,
@@ -78,6 +79,8 @@ function openDb(): Promise<IDBDatabase> {
       if (oldVersion < 4 && !db.objectStoreNames.contains('statsTagNames')) {
         db.createObjectStore('statsTagNames', { keyPath: 'name' });
       }
+
+      // v6: WorkMetadata lives on GraphNode.meta (no new object store).
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -129,9 +132,12 @@ async function allocateNodeIds(count: number): Promise<number> {
 }
 
 function normalizeGraphNode(node: GraphNode): GraphNode {
+  const meta =
+    node.kind === NodeKind.Work ? normalizeWorkMetadata(node.meta) : undefined;
   return {
     ...node,
     wordCount: node.wordCount ?? null,
+    ...(meta ? { meta } : {}),
   };
 }
 
@@ -173,7 +179,18 @@ async function upsertNode(
       kind === NodeKind.Work
         ? mergeWorkTitle(key, existing.title, patch.title)
         : patch.title ?? existing.title;
-    const updated: GraphNode = { ...existing, ...patch, title, kind, key: resolvedKey };
+    const meta =
+      kind === NodeKind.Work
+        ? mergeWorkMetadata(existing.meta, patch.meta)
+        : undefined;
+    const updated: GraphNode = {
+      ...existing,
+      ...patch,
+      title,
+      kind,
+      key: resolvedKey,
+      ...(kind === NodeKind.Work ? { meta } : { meta: undefined }),
+    };
     await tx(['nodes'], 'readwrite', async (transaction) => {
       transaction.objectStore('nodes').put(updated);
     });
@@ -181,6 +198,8 @@ async function upsertNode(
   }
 
   const id = await allocateNodeIds(1);
+  const meta =
+    kind === NodeKind.Work ? normalizeWorkMetadata(patch.meta) ?? patch.meta : undefined;
   const node: GraphNode = {
     id,
     kind,
@@ -190,6 +209,7 @@ async function upsertNode(
     estimatedFreq: patch.estimatedFreq ?? 1,
     calibratedFreq: patch.calibratedFreq ?? null,
     explored: patch.explored ?? false,
+    ...(meta ? { meta } : {}),
   };
 
   await tx(['nodes', 'keyIndex'], 'readwrite', async (transaction) => {
@@ -236,6 +256,7 @@ export async function mergeWorkPage(input: WorkMergeInput): Promise<GraphNode> {
     title: input.title,
     wordCount: input.wordCount ?? null,
     explored: input.explored ?? true,
+    meta: input.meta,
   });
 
   for (const tagName of input.tags) {
@@ -318,6 +339,7 @@ async function mergeDiscoveredWork(work: ListedWorkInput): Promise<GraphNode> {
     title: work.title,
     ...(work.wordCount != null ? { wordCount: work.wordCount } : {}),
     explored: false,
+    ...(work.meta ? { meta: work.meta } : {}),
   });
 
   for (const tagName of work.tags ?? []) {
@@ -452,6 +474,11 @@ function mergeImportedNodeFields(existing: GraphNode, imported: GraphNode): Grap
         ? existing.calibratedFreq
         : Math.max(existing.calibratedFreq, imported.calibratedFreq);
 
+  const meta =
+    existing.kind === NodeKind.Work
+      ? mergeWorkMetadata(existing.meta, imported.meta)
+      : undefined;
+
   return {
     ...existing,
     title,
@@ -459,6 +486,7 @@ function mergeImportedNodeFields(existing: GraphNode, imported: GraphNode): Grap
     estimatedFreq: Math.max(existing.estimatedFreq, imported.estimatedFreq),
     calibratedFreq,
     explored: existing.explored || imported.explored,
+    ...(existing.kind === NodeKind.Work ? { meta } : {}),
   };
 }
 
@@ -601,7 +629,7 @@ export async function putStatsTagsBatch(
       tagStore.put(record);
       if (
         record.name &&
-        (indexAllNames || options.indexNames.has(record.name))
+        (indexAllNames || options?.indexNames?.has(record.name))
       ) {
         nameStore.put({ name: record.name, tagId: record.tagId } satisfies StatsTagNameIndex);
       }

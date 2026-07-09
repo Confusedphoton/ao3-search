@@ -27,7 +27,7 @@ export const MAX_NEGATIVE_SEEDS = 20;
 export const NEGATIVE_RELEVANCE_LAMBDA = 3;
 
 export const DB_NAME = 'ao3-search';
-export const DB_VERSION = 5;
+export const DB_VERSION = 6;
 
 export const GRAPH_EXPORT_VERSION = 1;
 

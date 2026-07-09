@@ -40,6 +40,8 @@ export interface QueryPropagationInput {
   authorWorkIndexEdges: Array<{ workIndex: number; authorIndex: number }>;
   wordCounts: Array<number | null>;
   nodeKinds: NodeKind[];
+  /** Per-node work permeability μ; defaults to all 1s (no filtration). */
+  nodePermeabilities?: number[] | Float64Array;
   alpha?: number;
   maxIterations?: number;
   tolerance?: number;
@@ -119,6 +121,7 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     negativeLambda = NEGATIVE_RELEVANCE_LAMBDA,
     tagIndices,
     nodeKinds,
+    nodePermeabilities,
     alpha = PPR_ALPHA,
     maxIterations = PPR_MAX_ITERATIONS,
     tolerance = PPR_TOLERANCE,
@@ -146,6 +149,7 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     edgeWeights,
     [],
     rowOutFractions,
+    nodePermeabilities,
   );
   const params: PropagationParams = { alpha, maxIterations, tolerance };
 
@@ -182,6 +186,7 @@ export function runQueryPropagation(input: QueryPropagationInput): QueryPropagat
     nodeKinds,
     tagIndices,
     relevance: positiveRun.relevance,
+    nodePermeabilities,
   });
   mergeTagPriorLog(priorLog, tagIndices, tagPriorLog);
 
@@ -213,11 +218,13 @@ export function queryInputFromCsr(
     neighbors: number[];
     edgeWeights: number[];
     rowOutFractions: Float64Array;
+    nodeByIndex: Array<{ kind: NodeKind; wordCount: number | null }>;
   },
   seeds: {
     seedIndices: number[];
     negativeSeedIndices?: number[];
     negativeLambda?: number;
+    nodePermeabilities?: number[] | Float64Array;
     alpha: number;
     maxIterations: number;
     tolerance: number;
@@ -225,6 +232,7 @@ export function queryInputFromCsr(
 ): Omit<QueryPropagationInputPayload, 'mode'> {
   const wordCounts = csr.nodeByIndex.map((node) => node.wordCount ?? null);
   const nodeKinds = csr.nodeByIndex.map((node) => node.kind);
+  const { nodePermeabilities, ...rest } = seeds;
   return {
     offsets: csr.offsets,
     neighbors: csr.neighbors,
@@ -236,6 +244,9 @@ export function queryInputFromCsr(
     authorWorkIndexEdges: csr.authorWorkIndexEdges,
     wordCounts,
     nodeKinds,
-    ...seeds,
+    ...(nodePermeabilities
+      ? { nodePermeabilities: [...nodePermeabilities] }
+      : {}),
+    ...rest,
   };
 }

@@ -57,6 +57,8 @@ export interface QueryPropagationInputPayload {
   authorWorkIndexEdges: Array<{ workIndex: number; authorIndex: number }>;
   wordCounts: Array<number | null>;
   nodeKinds: number[];
+  /** Per-node work permeability μ for P′ᵢⱼ = Pᵢⱼ · μᵢ · μⱼ. */
+  nodePermeabilities?: number[];
   alpha: number;
   maxIterations: number;
   tolerance: number;

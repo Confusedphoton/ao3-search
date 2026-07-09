@@ -16,6 +16,7 @@ import {
 import { NodeKind } from '../graph/types';
 import { workUrl } from '../ao3';
 import { queryInputFromCsr } from '../propagation';
+import { buildNodePermeabilities } from '../propagation/permeability';
 import { runQueryPropagationViaWorker, closeComputeHost } from '../compute/host';
 import { loadGraphSnapshot } from '../storage/db';
 import { RequestScheduler } from '../scheduler/scheduler';
@@ -75,7 +76,8 @@ export class SearchOrchestrator {
     this.cancelled = false;
     const continuing = options.continueFromRequests > 0;
     const forceExpand = options.forceExpand ?? false;
-    const { topResults, negativeRelevanceLambda } = await loadSettings();
+    const settings = await loadSettings();
+    const { topResults, negativeRelevanceLambda, permeability } = settings;
     const positiveKeys = seeds.map((s) => {
       if (s.kind === 'work') return { kind: 'work' as const, key: s.workId };
       if (s.kind === 'tag') return { kind: 'tag' as const, key: s.tagName };
@@ -188,11 +190,13 @@ export class SearchOrchestrator {
         message: 'Running Personalized PageRank…',
       });
 
+      const nodePermeabilities = buildNodePermeabilities(csr.nodeByIndex, permeability);
       const propagation = await runQueryPropagationViaWorker({
         ...queryInputFromCsr(csr, {
           seedIndices,
           negativeSeedIndices,
           negativeLambda: negativeRelevanceLambda,
+          nodePermeabilities,
           alpha: PPR_ALPHA,
           maxIterations: PPR_MAX_ITERATIONS,
           tolerance: PPR_TOLERANCE,
@@ -234,11 +238,16 @@ export class SearchOrchestrator {
     const finalCsr = buildCSR(finalSnapshot);
     const finalSeeds = seedIndicesForPositiveSeeds(finalCsr, positiveKeys);
     const finalNegativeSeeds = seedIndicesForNegativeSeeds(finalCsr, negativeKeys);
+    const finalNodePermeabilities = buildNodePermeabilities(
+      finalCsr.nodeByIndex,
+      permeability,
+    );
     const finalPropagation = await runQueryPropagationViaWorker({
       ...queryInputFromCsr(finalCsr, {
         seedIndices: finalSeeds,
         negativeSeedIndices: finalNegativeSeeds,
         negativeLambda: negativeRelevanceLambda,
+        nodePermeabilities: finalNodePermeabilities,
         alpha: PPR_ALPHA,
         maxIterations: PPR_MAX_ITERATIONS,
         tolerance: PPR_TOLERANCE,

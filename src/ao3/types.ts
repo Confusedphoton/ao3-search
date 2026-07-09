@@ -1,4 +1,5 @@
 import { AO3_ORIGIN } from '../config/constants';
+import type { WorkMetadata } from '../graph/types';
 
 export type PageKind = 'work' | 'tag' | 'author' | 'search' | 'unknown';
 
@@ -13,6 +14,7 @@ export interface ListedWork {
   tags: string[];
   authors: ListedWorkAuthor[];
   wordCount: number | null;
+  meta: WorkMetadata;
 }
 
 export interface WorkPageData {
@@ -23,6 +25,7 @@ export interface WorkPageData {
   authors: Array<{ key: string; displayName: string }>;
   wordCount: number | null;
   url: string;
+  meta: WorkMetadata;
 }
 
 export interface TagPageData {

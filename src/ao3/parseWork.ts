@@ -1,6 +1,20 @@
+import type { WorkMetadata } from '../graph/types';
 import { selectors, wordCountPattern } from './selectors';
 import type { ListedWorkAuthor, WorkPageData } from './types';
 import { parseAuthorKeyFromHref, parseWorkIdFromUrl, workUrl } from './types';
+import { completionStatusFromChapters, emptyWorkMetadata } from './workMeta';
+
+function queryTagTexts(root: ParentNode, selector: string): string[] {
+  const tags: string[] = [];
+  const seen = new Set<string>();
+  for (const el of root.querySelectorAll(selector)) {
+    const text = el.textContent?.trim() ?? '';
+    if (!text || seen.has(text)) continue;
+    seen.add(text);
+    tags.push(text);
+  }
+  return tags;
+}
 
 export function parseAuthorsFromElement(
   root: ParentNode,
@@ -28,6 +42,22 @@ export function parseAuthorsFromDocument(doc: Document): ListedWorkAuthor[] {
   return parseAuthorsFromElement(doc, selectors.workAuthors);
 }
 
+export function parseWorkPageMetadata(doc: Document): WorkMetadata {
+  const meta = emptyWorkMetadata();
+  meta.rating = queryTagTexts(doc, selectors.workRating)[0] ?? null;
+  meta.archiveWarnings = queryTagTexts(doc, selectors.workWarning);
+  meta.categories = queryTagTexts(doc, selectors.workCategory);
+  meta.fandoms = queryTagTexts(doc, selectors.workFandom);
+
+  const languageEl = doc.querySelector(selectors.workLanguage);
+  meta.language = languageEl?.textContent?.trim() || null;
+
+  const chaptersEl = doc.querySelector(selectors.workChapters);
+  meta.completionStatus = completionStatusFromChapters(chaptersEl?.textContent);
+
+  return meta;
+}
+
 export function parseWorkPage(doc: Document, url: string): WorkPageData | null {
   const workId = parseWorkIdFromUrl(url);
   if (!workId) return null;
@@ -52,6 +82,7 @@ export function parseWorkPage(doc: Document, url: string): WorkPageData | null {
     authors: parseAuthorsFromDocument(doc),
     wordCount: Number.isFinite(wordCount) ? wordCount : null,
     url: workUrl(workId),
+    meta: parseWorkPageMetadata(doc),
   };
 }
 

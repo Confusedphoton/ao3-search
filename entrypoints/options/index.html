@@ -23,21 +23,15 @@
 
         <form id="settings-form" class="settings-form">
           <div class="field-row">
-            <label for="setting-top-results">Top results</label>
-            <input id="setting-top-results" name="topResults" type="number" required />
-            <p class="field-hint">How many ranked works to show after a search.</p>
+            <label for="setting-max-negative-seeds">Max negative seeds</label>
+            <input id="setting-max-negative-seeds" name="maxNegativeSeeds" type="number" required />
+            <p class="field-hint">Maximum avoid seeds used to penalize ranking.</p>
           </div>
 
           <div class="field-row">
             <label for="setting-max-seeds">Max seeds</label>
             <input id="setting-max-seeds" name="maxSeeds" type="number" required />
             <p class="field-hint">Maximum positive query seeds (works, tags, or authors).</p>
-          </div>
-
-          <div class="field-row">
-            <label for="setting-max-negative-seeds">Max negative seeds</label>
-            <input id="setting-max-negative-seeds" name="maxNegativeSeeds" type="number" required />
-            <p class="field-hint">Maximum avoid seeds used to penalize ranking.</p>
           </div>
 
           <div class="field-row">
@@ -54,12 +48,58 @@
             </p>
           </div>
 
+          <div class="field-row">
+            <label for="setting-top-results">Top results</label>
+            <input id="setting-top-results" name="topResults" type="number" required />
+            <p class="field-hint">How many ranked works to show after a search.</p>
+          </div>
+
           <div class="button-row">
             <button id="save-settings" type="submit">Save</button>
             <button id="restore-defaults" type="button" class="secondary">Restore defaults</button>
           </div>
           <p id="settings-status" class="status" hidden></p>
         </form>
+      </section>
+
+      <section>
+        <h2>Theme</h2>
+        <p class="hint">
+          Override the extension UI appearance. System follows your OS light/dark preference
+          (current default behavior).
+        </p>
+        <div class="theme-toggle" role="group" aria-label="Theme preference">
+          <button type="button" class="mode-btn" data-theme-value="light">Light</button>
+          <button type="button" class="mode-btn" data-theme-value="dark">Dark</button>
+          <button type="button" class="mode-btn" data-theme-value="system">System</button>
+        </div>
+        <p id="theme-status" class="status" hidden></p>
+      </section>
+
+      <section>
+        <h2>Work permeability filters</h2>
+        <p class="hint">
+          Soft-filter the relevance transition matrix by work metadata. Allowed values keep
+          permeability 1; blocked values use the slider (0 = hard block). Empty selection disables
+          that category. Whitelist requires all of a work’s values to be selected; blacklist
+          blocks if any selected value matches.
+        </p>
+        <div id="permeability-filters" class="permeability-filters"></div>
+        <div class="button-row">
+          <button id="save-permeability" type="button">Save filters</button>
+        </div>
+        <p id="permeability-status" class="status" hidden></p>
+      </section>
+
+      <section>
+        <h2>Hidden from results</h2>
+        <p class="hint">
+          Works skipped in the ranked list only — does not change scoring or the graph. Hide works
+          from an AO3 work page overlay.
+        </p>
+        <p id="suppressed-empty" class="hint" hidden>No hidden works.</p>
+        <ul id="suppressed-list" class="suppressed-list"></ul>
+        <p id="suppressed-status" class="status" hidden></p>
       </section>
 
       <section>

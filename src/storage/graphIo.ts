@@ -1,4 +1,5 @@
 import { GRAPH_EXPORT_VERSION } from '../config/constants';
+import { normalizeWorkMetadata } from '../ao3/workMeta';
 import type {
   AuthorWorkEdge,
   GraphEdge,
@@ -31,6 +32,9 @@ function parseGraphNode(value: unknown): GraphNode | null {
   if (record.title != null && typeof record.title !== 'string') return null;
   if (record.wordCount != null && typeof record.wordCount !== 'number') return null;
 
+  const meta =
+    record.kind === NodeKind.Work ? normalizeWorkMetadata(record.meta) : undefined;
+
   return {
     id: record.id,
     kind: record.kind,
@@ -40,6 +44,7 @@ function parseGraphNode(value: unknown): GraphNode | null {
     estimatedFreq: record.estimatedFreq,
     calibratedFreq: record.calibratedFreq ?? null,
     explored: record.explored,
+    ...(meta ? { meta } : {}),
   };
 }
 

@@ -16,14 +16,28 @@ import {
   tagWorksUrl,
 } from '@/src/ao3/types';
 
+const emptyMeta = {
+  language: null,
+  rating: null,
+  archiveWarnings: [],
+  completionStatus: null,
+  fandoms: [],
+  categories: [],
+};
+
 const workHtml = `
 <html><body>
   <h2 class="title heading">Test Work</h2>
   <dl class="work meta group">
+    <dd class="rating tags"><a class="tag" href="/tags/Explicit">Explicit</a></dd>
+    <dd class="warning tags"><a class="tag" href="/tags/No%20Archive%20Warnings%20Apply">No Archive Warnings Apply</a></dd>
+    <dd class="category tags"><a class="tag" href="/tags/M*s*M">M/M</a></dd>
+    <dd class="fandom tags"><a class="tag" href="/tags/Harry%20Potter">Harry Potter</a></dd>
+    <dd class="freeform tags"><a class="tag" href="/tags/Fluff">Fluff</a></dd>
+    <dd class="language">English</dd>
+    <dd class="chapters">3/3</dd>
     <dd class="words">12,345 Words</dd>
     <dd class="users"><a href="/users/AuthorName">Author Name</a></dd>
-    <dd class="tags"><a class="tag" href="/tags/Harry%20Potter">Harry Potter</a></dd>
-    <dd class="tags"><a class="tag" href="/tags/Fluff">Fluff</a></dd>
   </dl>
 </body></html>`;
 
@@ -37,11 +51,24 @@ const tagHtml = `
           <a href="/works/12345">Story</a> by <a rel="author" href="/users/WriterOne">Writer One</a>
         </h4>
         <h5 class="fandoms heading"><a class="tag" href="/tags/Harry%20Potter">Harry Potter</a></h5>
+        <ul class="required-tags">
+          <li><span class="rating" title="Teen And Up Audiences"><span class="text">Teen And Up Audiences</span></span></li>
+          <li><span class="warnings" title="No Archive Warnings Apply"><span class="text">No Archive Warnings Apply</span></span></li>
+          <li><span class="category" title="M/M"><span class="text">M/M</span></span></li>
+          <li><span class="iswip" title="Complete"><span class="text">Complete</span></span></li>
+        </ul>
       </div>
       <ul class="tags commas">
+        <li class="warnings"><a class="tag" href="/tags/No%20Archive%20Warnings%20Apply">No Archive Warnings Apply</a></li>
         <li class="relationships"><a class="tag" href="/tags/Draco%20Malfoy*s*Harry%20Potter">Draco Malfoy/Harry Potter</a></li>
         <li class="freeforms"><a class="tag" href="/tags/Fluff">Fluff</a></li>
       </ul>
+      <dl class="stats">
+        <dt class="language">Language:</dt>
+        <dd class="language">English</dd>
+        <dt class="chapters">Chapters:</dt>
+        <dd class="chapters">1/1</dd>
+      </dl>
     </li>
     <li class="work blurb">
       <h4 class="heading"><a href="/works/67890">Other</a></h4>
@@ -84,6 +111,14 @@ describe('AO3 parsers', () => {
       wordCount: 12345,
       tags: ['Harry Potter', 'Fluff'],
       authors: [{ key: 'AuthorName', displayName: 'Author Name' }],
+      meta: {
+        language: 'English',
+        rating: 'Explicit',
+        archiveWarnings: ['No Archive Warnings Apply'],
+        completionStatus: 'Complete',
+        fandoms: ['Harry Potter'],
+        categories: ['M/M'],
+      },
     });
   });
 
@@ -99,9 +134,17 @@ describe('AO3 parsers', () => {
         {
           workId: '12345',
           title: 'Story',
-          tags: ['Harry Potter', 'Draco Malfoy/Harry Potter', 'Fluff'],
+          tags: ['Harry Potter', 'No Archive Warnings Apply', 'Draco Malfoy/Harry Potter', 'Fluff'],
           authors: [{ key: 'WriterOne', displayName: 'Writer One' }],
           wordCount: null,
+          meta: {
+            language: 'English',
+            rating: 'Teen And Up Audiences',
+            archiveWarnings: ['No Archive Warnings Apply'],
+            completionStatus: 'Complete',
+            fandoms: ['Harry Potter'],
+            categories: ['M/M'],
+          },
         },
         {
           workId: '67890',
@@ -109,6 +152,7 @@ describe('AO3 parsers', () => {
           tags: [],
           authors: [],
           wordCount: null,
+          meta: emptyMeta,
         },
       ],
     });
@@ -130,6 +174,7 @@ describe('AO3 parsers', () => {
           tags: ['Marvel'],
           authors: [{ key: 'AuthorName', displayName: 'Author Name' }],
           wordCount: null,
+          meta: { ...emptyMeta, fandoms: [] },
         },
         {
           workId: '22222',
@@ -140,6 +185,7 @@ describe('AO3 parsers', () => {
             { key: 'CoAuthor', displayName: 'Co Author' },
           ],
           wordCount: null,
+          meta: emptyMeta,
         },
       ],
     });
@@ -166,6 +212,7 @@ describe('AO3 parsers', () => {
         tags: ['Fluff'],
         authors: [],
         wordCount: null,
+        meta: { ...emptyMeta, fandoms: ['Fluff'] },
       },
     ]);
   });
@@ -203,6 +250,7 @@ describe('AO3 parsers', () => {
           tags: ['Marvel Cinematic Universe', 'Fluff'],
           authors: [{ key: 'brhmsheelshirebf/pseuds/brhmsheelshirebf', displayName: 'brhmsheelshirebf' }],
           wordCount: 1355,
+          meta: { ...emptyMeta, fandoms: ['Marvel Cinematic Universe'] },
         },
       ],
     });
@@ -288,6 +336,7 @@ describe('AO3 parsers', () => {
         tags: [],
         authors: [{ key: 'WriterOne', displayName: 'Writer One' }],
         wordCount: null,
+        meta: emptyMeta,
       },
     ]);
     expect(parseAuthorKeyFromHref('/users/Junespriince/gifts')).toBeNull();
