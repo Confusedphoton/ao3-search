@@ -15,6 +15,54 @@
       </header>
 
       <section>
+        <h2>Search options</h2>
+        <p class="hint">
+          Tuning knobs for result count, seed limits, and how strongly negative seeds penalize
+          ranking. Changes apply immediately.
+        </p>
+
+        <form id="settings-form" class="settings-form">
+          <div class="field-row">
+            <label for="setting-top-results">Top results</label>
+            <input id="setting-top-results" name="topResults" type="number" required />
+            <p class="field-hint">How many ranked works to show after a search.</p>
+          </div>
+
+          <div class="field-row">
+            <label for="setting-max-seeds">Max seeds</label>
+            <input id="setting-max-seeds" name="maxSeeds" type="number" required />
+            <p class="field-hint">Maximum positive query seeds (works, tags, or authors).</p>
+          </div>
+
+          <div class="field-row">
+            <label for="setting-max-negative-seeds">Max negative seeds</label>
+            <input id="setting-max-negative-seeds" name="maxNegativeSeeds" type="number" required />
+            <p class="field-hint">Maximum avoid seeds used to penalize ranking.</p>
+          </div>
+
+          <div class="field-row">
+            <label for="setting-negative-lambda">Negative relevance λ</label>
+            <input
+              id="setting-negative-lambda"
+              name="negativeRelevanceLambda"
+              type="number"
+              step="any"
+              required
+            />
+            <p class="field-hint">
+              Multiplier for score = r⁺ − λ r⁻. Higher values push avoided content down harder.
+            </p>
+          </div>
+
+          <div class="button-row">
+            <button id="save-settings" type="submit">Save</button>
+            <button id="restore-defaults" type="button" class="secondary">Restore defaults</button>
+          </div>
+          <p id="settings-status" class="status" hidden></p>
+        </form>
+      </section>
+
+      <section>
         <h2>AO3 stats metadata</h2>
         <p class="hint">
           Import the official tags dump (e.g. tags-20210226.csv) to calibrate tag frequencies and

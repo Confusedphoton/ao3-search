@@ -2,12 +2,11 @@ import type { NegativeSeed, PositiveSeed, SearchProgressPayload, SearchResultIte
 import {
   EXPANSION_BUDGET,
   MIN_FRONTIER_EXPECTED_INFO,
-  NEGATIVE_RELEVANCE_LAMBDA,
   PPR_ALPHA,
   PPR_MAX_ITERATIONS,
   PPR_TOLERANCE,
-  TOP_RESULTS,
 } from '../config/constants';
+import { loadSettings } from '../config/settings';
 import {
   buildCSR,
   seedIndicesForNegativeSeeds,
@@ -38,20 +37,29 @@ export class SearchOrchestrator {
   async run(
     seeds: PositiveSeed[],
     negativeSeeds: NegativeSeed[],
+    suppressedWorkIds: Iterable<string>,
     onProgress: (payload: SearchProgressPayload) => void | Promise<void>,
   ): Promise<SearchRunResult> {
-    return this.runWithOptions(seeds, negativeSeeds, { continueFromRequests: 0 }, onProgress);
+    return this.runWithOptions(
+      seeds,
+      negativeSeeds,
+      suppressedWorkIds,
+      { continueFromRequests: 0 },
+      onProgress,
+    );
   }
 
   async continueRun(
     seeds: PositiveSeed[],
     negativeSeeds: NegativeSeed[],
+    suppressedWorkIds: Iterable<string>,
     initialRequestsUsed: number,
     onProgress: (payload: SearchProgressPayload) => void | Promise<void>,
   ): Promise<SearchRunResult> {
     return this.runWithOptions(
       seeds,
       negativeSeeds,
+      suppressedWorkIds,
       { continueFromRequests: initialRequestsUsed, forceExpand: true },
       onProgress,
     );
@@ -60,12 +68,14 @@ export class SearchOrchestrator {
   private async runWithOptions(
     seeds: PositiveSeed[],
     negativeSeeds: NegativeSeed[],
+    suppressedWorkIds: Iterable<string>,
     options: { continueFromRequests: number; forceExpand?: boolean },
     onProgress: (payload: SearchProgressPayload) => void | Promise<void>,
   ): Promise<SearchRunResult> {
     this.cancelled = false;
     const continuing = options.continueFromRequests > 0;
     const forceExpand = options.forceExpand ?? false;
+    const { topResults, negativeRelevanceLambda } = await loadSettings();
     const positiveKeys = seeds.map((s) => {
       if (s.kind === 'work') return { kind: 'work' as const, key: s.workId };
       if (s.kind === 'tag') return { kind: 'tag' as const, key: s.tagName };
@@ -125,10 +135,13 @@ export class SearchOrchestrator {
       }
     }
 
+    // Seed/avoid works are omitted from stored rankings. Suppressed works stay in
+    // the ranked list (so toggles can restore them) but are filtered before display.
     const excludeWorkIds = new Set(seedWorkIds);
     for (const seed of negativeSeeds) {
       if (seed.kind === 'work') excludeWorkIds.add(seed.workId);
     }
+    const suppressedIds = new Set(suppressedWorkIds);
 
     const emitPreview = async (
       csr: CSRGraph,
@@ -137,7 +150,14 @@ export class SearchOrchestrator {
     ): Promise<void> => {
       await onProgress({
         ...payload,
-        previewResults: rankWorks(csr, relevance, excludeWorkIds, seedTitleMap),
+        previewResults: rankWorks(
+          csr,
+          relevance,
+          excludeWorkIds,
+          suppressedIds,
+          seedTitleMap,
+          topResults,
+        ),
       });
     };
 
@@ -172,7 +192,7 @@ export class SearchOrchestrator {
         ...queryInputFromCsr(csr, {
           seedIndices,
           negativeSeedIndices,
-          negativeLambda: NEGATIVE_RELEVANCE_LAMBDA,
+          negativeLambda: negativeRelevanceLambda,
           alpha: PPR_ALPHA,
           maxIterations: PPR_MAX_ITERATIONS,
           tolerance: PPR_TOLERANCE,
@@ -218,7 +238,7 @@ export class SearchOrchestrator {
       ...queryInputFromCsr(finalCsr, {
         seedIndices: finalSeeds,
         negativeSeedIndices: finalNegativeSeeds,
-        negativeLambda: NEGATIVE_RELEVANCE_LAMBDA,
+        negativeLambda: negativeRelevanceLambda,
         alpha: PPR_ALPHA,
         maxIterations: PPR_MAX_ITERATIONS,
         tolerance: PPR_TOLERANCE,
@@ -228,7 +248,14 @@ export class SearchOrchestrator {
     await closeComputeHost();
 
     const relevance = Float64Array.from(finalPropagation.relevance);
-    const results = rankWorks(finalCsr, relevance, excludeWorkIds, seedTitleMap);
+    const results = rankWorks(
+      finalCsr,
+      relevance,
+      excludeWorkIds,
+      suppressedIds,
+      seedTitleMap,
+      topResults,
+    );
     const finalAuthority = Float64Array.from(finalPropagation.authority);
     const finalPrecision = Float64Array.from(finalPropagation.precision);
     const remainingFrontier = buildFrontier(finalCsr, relevance, finalAuthority, finalPrecision);
@@ -265,22 +292,32 @@ function rankWorks(
   csr: CSRGraph,
   relevance: Float64Array | number[],
   excludeWorkIds: Set<string>,
+  suppressedWorkIds: Set<string>,
   seedTitleMap: Map<string, string>,
+  topResults: number,
 ): SearchResultItem[] {
-  return csr.workIndices
+  const ranked = csr.workIndices
     .map((index) => ({
       node: csr.nodeByIndex[index],
       score: relevance[index],
     }))
     .filter((item) => item.node.kind === NodeKind.Work && !excludeWorkIds.has(item.node.key))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, TOP_RESULTS)
-    .map((item) => ({
+    .sort((a, b) => b.score - a.score);
+
+  const results: SearchResultItem[] = [];
+  let visibleCount = 0;
+  for (const item of ranked) {
+    const suppressed = suppressedWorkIds.has(item.node.key);
+    if (!suppressed) visibleCount++;
+    results.push({
       workId: item.node.key,
       title: resolveWorkTitle(item.node.key, item.node.title, seedTitleMap),
       url: workUrl(item.node.key),
       relevance: item.score,
-    }));
+    });
+    if (visibleCount >= topResults) break;
+  }
+  return results;
 }
 
 function countNewlyExplored(before: { explored: boolean }[], after: { explored: boolean }[]): number {

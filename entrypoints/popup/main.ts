@@ -6,19 +6,28 @@ import type {
   PositiveSeed,
   SearchProgressPayload,
   SearchResultItem,
+  SuppressedWork,
 } from '@/src/messaging/types';
 import type { GraphExport, GraphStats } from '@/src/graph/types';
 import { NodeKind } from '@/src/graph/types';
 import { isExtensionMessage } from '@/src/messaging/types';
 import { sendMessage } from '@/src/messaging/protocol';
 import { authorWorksUrl, tagWorksUrl } from '@/src/ao3/types';
-import { EXPANSION_BUDGET, MAX_NEGATIVE_SEEDS, MAX_SEEDS, MIN_SEEDS } from '@/src/config/constants';
+import { EXPANSION_BUDGET, MIN_SEEDS } from '@/src/config/constants';
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  SETTINGS_STORAGE_KEY,
+  settingsFromStorageChange,
+  type TunableSettings,
+} from '@/src/config/settings';
 import { parseGraphExport } from '@/src/storage/graphIo';
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
 let seeds: PositiveSeed[] = [];
 let negativeSeeds: NegativeSeed[] = [];
+let suppressedWorks: SuppressedWork[] = [];
 let searching = false;
 let progress: SearchProgressPayload | null = null;
 let results: SearchResultItem[] = [];
@@ -31,6 +40,7 @@ let graphStats: GraphStats | null = null;
 let graphMessage = '';
 let pendingImport: GraphExport | null = null;
 let pendingImportFileName = '';
+let settings: TunableSettings = { ...DEFAULT_SETTINGS };
 
 function positiveSeedLabel(seed: PositiveSeed): string {
   if (seed.kind === 'work') return seed.title;
@@ -132,7 +142,7 @@ function render(): void {
 
     <section>
       <div class="section-header">
-        <h2>Query seeds (${seeds.length}/${MAX_SEEDS})</h2>
+        <h2>Query seeds (${seeds.length}/${settings.maxSeeds})</h2>
         <button id="add-seed" type="button" ${searching ? 'disabled' : ''}>Add current tab</button>
       </div>
       <p class="hint">Works, tags, or authors that define what you want.</p>
@@ -153,7 +163,7 @@ function render(): void {
       <ul id="seed-list">
         ${
           seeds.length === 0
-            ? `<li class="empty">Add ${MIN_SEEDS}–${MAX_SEEDS} works, tags, or authors.</li>`
+            ? `<li class="empty">Add ${MIN_SEEDS}–${settings.maxSeeds} works, tags, or authors.</li>`
             : seeds
                 .map(
                   (seed) => `
@@ -170,7 +180,7 @@ function render(): void {
 
     <section class="negative-section">
       <div class="section-header">
-        <h2>Avoid (${negativeSeeds.length}/${MAX_NEGATIVE_SEEDS})</h2>
+        <h2>Avoid (${negativeSeeds.length}/${settings.maxNegativeSeeds})</h2>
         <button id="add-negative-work" type="button" ${searching ? 'disabled' : ''}>Add current tab</button>
       </div>
       <p class="hint">Works, tags, or authors to penalize — e.g. Major Character Death.</p>
@@ -240,6 +250,28 @@ function render(): void {
                 .join('')
         }
       </ol>
+    </section>
+
+    <section class="suppressed-section">
+      <div class="section-header">
+        <h2>Hidden from results (${suppressedWorks.length})</h2>
+      </div>
+      <p class="hint">Skipped in the ranked list only — does not change scoring or the graph.</p>
+      <ul id="suppressed-list">
+        ${
+          suppressedWorks.length === 0
+            ? '<li class="empty">Hide works from an AO3 work page overlay.</li>'
+            : suppressedWorks
+                .map(
+                  (work) => `
+            <li>
+              <a href="${work.url}" target="_blank" rel="noopener" class="suppressed-label">${escapeHtml(work.title)}</a>
+              <button data-unsuppress-work="${escapeAttr(work.workId)}" type="button">Show again</button>
+            </li>`,
+                )
+                .join('')
+        }
+      </ul>
     </section>
 
     <section class="graph-section">
@@ -418,6 +450,13 @@ function bindEvents(): void {
     });
   });
 
+  document.querySelectorAll('[data-unsuppress-work]').forEach((el) => {
+    el.addEventListener('click', () => {
+      const workId = el.getAttribute('data-unsuppress-work');
+      if (workId) void dispatch({ type: 'UnsuppressWork', workId });
+    });
+  });
+
   document.querySelector('#export-graph')?.addEventListener('click', () => {
     void exportCurrentGraph();
   });
@@ -567,6 +606,7 @@ function applyState(message: ExtensionMessage): void {
   if (message.type === 'StateUpdate') {
     seeds = message.seeds;
     negativeSeeds = message.negativeSeeds;
+    suppressedWorks = message.suppressedWorks ?? [];
     searching = message.searching;
     progress =
       message.progress && message.progress.expansionBudget === 0
@@ -665,7 +705,23 @@ function normalizeStoredNegativeSeed(raw: unknown): NegativeSeed | null {
   return null;
 }
 
+function normalizeStoredSuppressedWork(raw: unknown): SuppressedWork | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.workId !== 'string') return null;
+  return {
+    workId: record.workId,
+    title: typeof record.title === 'string' ? record.title : `Work ${record.workId}`,
+    url:
+      typeof record.url === 'string'
+        ? record.url
+        : `https://archiveofourown.org/works/${record.workId}`,
+  };
+}
+
 async function loadInitialState(): Promise<void> {
+  settings = await loadSettings();
+
   try {
     const response = await sendMessage({ type: 'GetState' });
     if (response?.type === 'StateUpdate') {
@@ -681,6 +737,7 @@ async function loadInitialState(): Promise<void> {
   const stored = await browser.storage.local.get([
     'seeds',
     'negativeSeeds',
+    'suppressedWorks',
     'lastResults',
     'lastProgress',
   ]);
@@ -695,8 +752,16 @@ async function loadInitialState(): Promise<void> {
       .map((seed) => normalizeStoredNegativeSeed(seed))
       .filter((seed): seed is NegativeSeed => seed !== null);
   }
+  if (Array.isArray(stored.suppressedWorks)) {
+    suppressedWorks = stored.suppressedWorks
+      .map((work) => normalizeStoredSuppressedWork(work))
+      .filter((work): work is SuppressedWork => work !== null);
+  }
   if (Array.isArray(stored.lastResults)) {
-    results = stored.lastResults as SearchResultItem[];
+    const hidden = new Set(suppressedWorks.map((work) => work.workId));
+    results = (stored.lastResults as SearchResultItem[]).filter(
+      (item) => !hidden.has(item.workId),
+    );
   }
   if (stored.lastProgress && typeof stored.lastProgress === 'object') {
     const storedProgress = stored.lastProgress as SearchProgressPayload;
@@ -712,6 +777,14 @@ async function loadInitialState(): Promise<void> {
 
 browser.runtime.onMessage.addListener((message) => {
   if (isExtensionMessage(message)) applyState(message);
+});
+
+browser.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local' || !(SETTINGS_STORAGE_KEY in changes)) return;
+  const next = settingsFromStorageChange(changes[SETTINGS_STORAGE_KEY]);
+  if (!next) return;
+  settings = next;
+  render();
 });
 
 app.innerHTML = '<p class="status loading">Loading…</p>';

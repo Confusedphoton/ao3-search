@@ -11,6 +11,13 @@ export type NegativeSeed =
   | { kind: 'tag'; tagName: string; url: string }
   | { kind: 'author'; authorKey: string; displayName: string; url: string };
 
+/** Display-only hide: skipped in ranked results, does not affect graph or scoring. */
+export interface SuppressedWork {
+  workId: string;
+  title: string;
+  url: string;
+}
+
 export interface SearchProgressPayload {
   phase: 'cold-start' | 'expanding' | 'ranking' | 'done' | 'error';
   requestsUsed: number;
@@ -100,6 +107,8 @@ export type ExtensionMessage =
   | { type: 'AddNegativeTagFromTab' }
   | { type: 'AddNegativeTag'; tagName: string }
   | { type: 'RemoveNegativeSeed'; kind: 'work' | 'tag' | 'author'; key: string }
+  | { type: 'ToggleSuppressWorkFromTab' }
+  | { type: 'UnsuppressWork'; workId: string }
   | { type: 'SearchGraphTags'; query: string }
   | { type: 'GraphTagResults'; tags: GraphTagMatch[] }
   | { type: 'GetState' }
@@ -107,6 +116,7 @@ export type ExtensionMessage =
       type: 'StateUpdate';
       seeds: PositiveSeed[];
       negativeSeeds: NegativeSeed[];
+      suppressedWorks: SuppressedWork[];
       searching: boolean;
       progress: SearchProgressPayload | null;
       results: SearchResultItem[];

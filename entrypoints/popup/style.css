@@ -117,7 +117,8 @@ li.empty {
   font-variant-numeric: tabular-nums;
 }
 
-.negative-section {
+.negative-section,
+.suppressed-section {
   border-left: 3px solid var(--text-muted);
   padding-left: 10px;
 }
@@ -129,8 +130,18 @@ li.empty {
 }
 
 .seed-label,
-.negative-label {
+.negative-label,
+.suppressed-label {
   flex: 1;
+}
+
+.suppressed-label {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.suppressed-label:hover {
+  text-decoration: underline;
 }
 
 .seed-kind,

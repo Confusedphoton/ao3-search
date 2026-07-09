@@ -12,8 +12,16 @@ import type {
   PositiveSeed,
   SearchProgressPayload,
   SearchResultItem,
+  SuppressedWork,
 } from '@/src/messaging/types';
-import { EXPANSION_BUDGET, MAX_NEGATIVE_SEEDS, MAX_SEEDS } from '@/src/config/constants';
+import { EXPANSION_BUDGET } from '@/src/config/constants';
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  SETTINGS_STORAGE_KEY,
+  settingsFromStorageChange,
+  type TunableSettings,
+} from '@/src/config/settings';
 import { mergeAuthorPage, mergeSearchPage, mergeTagPage, mergeWorkPage, searchTagNodes } from '@/src/storage/db';
 import { exportGraph, getGraphStats, importGraph, parseGraphExport } from '@/src/storage/graphIo';
 import { resolveGraphTagName } from '@/src/storage/tagCanonical';
@@ -23,20 +31,52 @@ import { SearchOrchestrator } from '@/src/search/orchestrator';
 
 const seeds: PositiveSeed[] = [];
 const negativeSeeds: NegativeSeed[] = [];
+const suppressedWorks: SuppressedWork[] = [];
 let searching = false;
 let orchestrator: SearchOrchestrator | null = null;
 let lastResults: SearchResultItem[] = [];
 let lastProgress: SearchProgressPayload | null = null;
 let ready: Promise<void> | null = null;
+let settings: TunableSettings = { ...DEFAULT_SETTINGS };
+
+function suppressedWorkIds(): string[] {
+  return suppressedWorks.map((work) => work.workId);
+}
+
+function filterSuppressedResults(results: SearchResultItem[]): SearchResultItem[] {
+  const limit = settings.topResults;
+  if (suppressedWorks.length === 0) return results.slice(0, limit);
+  const hidden = new Set(suppressedWorkIds());
+  return results.filter((item) => !hidden.has(item.workId)).slice(0, limit);
+}
+
+function visibleResults(): SearchResultItem[] {
+  return filterSuppressedResults(lastResults);
+}
+
+function visibleProgress(
+  progress: SearchProgressPayload | null,
+): SearchProgressPayload | null {
+  if (!progress?.previewResults) return progress;
+  return { ...progress, previewResults: filterSuppressedResults(progress.previewResults) };
+}
 
 async function persistUiState(): Promise<void> {
-  await browser.storage.local.set({ seeds, negativeSeeds, lastResults, lastProgress });
+  await browser.storage.local.set({
+    seeds,
+    negativeSeeds,
+    suppressedWorks,
+    lastResults,
+    lastProgress,
+  });
 }
 
 async function loadPersistedState(): Promise<void> {
+  settings = await loadSettings();
   const stored = await browser.storage.local.get([
     'seeds',
     'negativeSeeds',
+    'suppressedWorks',
     'lastResults',
     'lastProgress',
   ]);
@@ -51,6 +91,12 @@ async function loadPersistedState(): Promise<void> {
       .map((seed) => normalizeStoredNegativeSeed(seed))
       .filter((seed): seed is NegativeSeed => seed !== null);
     negativeSeeds.splice(0, negativeSeeds.length, ...normalized);
+  }
+  if (Array.isArray(stored.suppressedWorks)) {
+    const normalized = stored.suppressedWorks
+      .map((work) => normalizeStoredSuppressedWork(work))
+      .filter((work): work is SuppressedWork => work !== null);
+    suppressedWorks.splice(0, suppressedWorks.length, ...normalized);
   }
   if (Array.isArray(stored.lastResults)) {
     lastResults = stored.lastResults as SearchResultItem[];
@@ -130,6 +176,20 @@ function normalizeStoredNegativeSeed(raw: unknown): NegativeSeed | null {
   return null;
 }
 
+function normalizeStoredSuppressedWork(raw: unknown): SuppressedWork | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const record = raw as Record<string, unknown>;
+  if (typeof record.workId !== 'string') return null;
+  return {
+    workId: record.workId,
+    title: typeof record.title === 'string' ? record.title : `Work ${record.workId}`,
+    url:
+      typeof record.url === 'string'
+        ? record.url
+        : `https://archiveofourown.org/works/${record.workId}`,
+  };
+}
+
 function authorDisplayNameFromTitle(authorKey: string, title: string): string {
   return title.replace(/\s*-\s*Works.*$/i, '').replace(/^Works by\s+/i, '').trim() || authorKey;
 }
@@ -144,9 +204,10 @@ function stateUpdate(
     type: 'StateUpdate',
     seeds: [...seeds],
     negativeSeeds: [...negativeSeeds],
+    suppressedWorks: [...suppressedWorks],
     searching: searchingNow,
-    progress: effectiveProgress,
-    results: lastResults,
+    progress: visibleProgress(effectiveProgress),
+    results: visibleResults(),
   };
 }
 
@@ -281,7 +342,7 @@ async function addSeedFromTab(sender: Browser.runtime.MessageSender): Promise<Ex
     if (isPositiveWorkSeed(info.workId) || isNegativeWorkSeed(info.workId)) {
       return stateUpdate(searching);
     }
-    if (seeds.length >= MAX_SEEDS) return stateUpdate(searching);
+    if (seeds.length >= settings.maxSeeds) return stateUpdate(searching);
 
     seeds.push({
       kind: 'work',
@@ -299,7 +360,7 @@ async function addSeedFromTab(sender: Browser.runtime.MessageSender): Promise<Ex
     if (isPositiveTagSeed(tagName) || isNegativeTagSeed(tagName)) {
       return stateUpdate(searching);
     }
-    if (seeds.length >= MAX_SEEDS) return stateUpdate(searching);
+    if (seeds.length >= settings.maxSeeds) return stateUpdate(searching);
 
     seeds.push({
       kind: 'tag',
@@ -315,7 +376,7 @@ async function addSeedFromTab(sender: Browser.runtime.MessageSender): Promise<Ex
     if (isPositiveAuthorSeed(info.authorKey) || isNegativeAuthorSeed(info.authorKey)) {
       return stateUpdate(searching);
     }
-    if (seeds.length >= MAX_SEEDS) return stateUpdate(searching);
+    if (seeds.length >= settings.maxSeeds) return stateUpdate(searching);
 
     seeds.push({
       kind: 'author',
@@ -335,7 +396,7 @@ async function addSeedTag(tagName: string): Promise<ExtensionMessage> {
   if (!trimmed || isPositiveTagSeed(trimmed) || isNegativeTagSeed(trimmed)) {
     return stateUpdate(searching);
   }
-  if (seeds.length >= MAX_SEEDS) return stateUpdate(searching);
+  if (seeds.length >= settings.maxSeeds) return stateUpdate(searching);
 
   seeds.push({
     kind: 'tag',
@@ -357,7 +418,7 @@ async function addNegativeWorkFromTab(sender: Browser.runtime.MessageSender): Pr
     if (isPositiveWorkSeed(info.workId) || isNegativeWorkSeed(info.workId)) {
       return stateUpdate(searching);
     }
-    if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) return stateUpdate(searching);
+    if (negativeSeeds.length >= settings.maxNegativeSeeds) return stateUpdate(searching);
 
     negativeSeeds.push({
       kind: 'work',
@@ -375,7 +436,7 @@ async function addNegativeWorkFromTab(sender: Browser.runtime.MessageSender): Pr
     if (isPositiveTagSeed(tagName) || isNegativeTagSeed(tagName)) {
       return stateUpdate(searching);
     }
-    if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) return stateUpdate(searching);
+    if (negativeSeeds.length >= settings.maxNegativeSeeds) return stateUpdate(searching);
 
     negativeSeeds.push({
       kind: 'tag',
@@ -391,7 +452,7 @@ async function addNegativeWorkFromTab(sender: Browser.runtime.MessageSender): Pr
     if (isPositiveAuthorSeed(info.authorKey) || isNegativeAuthorSeed(info.authorKey)) {
       return stateUpdate(searching);
     }
-    if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) return stateUpdate(searching);
+    if (negativeSeeds.length >= settings.maxNegativeSeeds) return stateUpdate(searching);
 
     negativeSeeds.push({
       kind: 'author',
@@ -418,7 +479,7 @@ async function addNegativeTagFromTab(sender: Browser.runtime.MessageSender): Pro
     return stateUpdate(searching);
   }
 
-  if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) {
+  if (negativeSeeds.length >= settings.maxNegativeSeeds) {
     return stateUpdate(searching);
   }
 
@@ -438,7 +499,7 @@ async function addNegativeTag(tagName: string): Promise<ExtensionMessage> {
     return stateUpdate(searching);
   }
 
-  if (negativeSeeds.length >= MAX_NEGATIVE_SEEDS) {
+  if (negativeSeeds.length >= settings.maxNegativeSeeds) {
     return stateUpdate(searching);
   }
 
@@ -447,6 +508,38 @@ async function addNegativeTag(tagName: string): Promise<ExtensionMessage> {
     tagName: trimmed,
     url: tagWorksUrl(trimmed),
   });
+  await persistUiState();
+  await publishState();
+  return stateUpdate(searching);
+}
+
+async function toggleSuppressWorkFromTab(
+  sender: Browser.runtime.MessageSender,
+): Promise<ExtensionMessage> {
+  const tabId = await getActiveTabId(sender);
+  if (!tabId) return stateUpdate(searching);
+
+  const info = await readTabPageInfo(tabId);
+  if (!info.workId) return stateUpdate(searching);
+
+  const existing = suppressedWorks.findIndex((work) => work.workId === info.workId);
+  if (existing >= 0) {
+    suppressedWorks.splice(existing, 1);
+  } else {
+    suppressedWorks.push({
+      workId: info.workId,
+      title: info.title || `Work ${info.workId}`,
+      url: info.url,
+    });
+  }
+  await persistUiState();
+  await publishState();
+  return stateUpdate(searching);
+}
+
+async function unsuppressWork(workId: string): Promise<ExtensionMessage> {
+  const index = suppressedWorks.findIndex((work) => work.workId === workId);
+  if (index >= 0) suppressedWorks.splice(index, 1);
   await persistUiState();
   await publishState();
   return stateUpdate(searching);
@@ -555,6 +648,12 @@ onMessage(async (message, sender) => {
       return stateUpdate(searching);
     }
 
+    case 'ToggleSuppressWorkFromTab':
+      return toggleSuppressWorkFromTab(sender);
+
+    case 'UnsuppressWork':
+      return unsuppressWork(message.workId);
+
     case 'CancelSearch':
       orchestrator?.cancel();
       searching = false;
@@ -603,25 +702,33 @@ async function runSearch(
       lastResults = payload.previewResults;
     }
     await persistUiState();
-    await broadcast({ type: 'SearchProgress', payload });
+    const visiblePayload = visibleProgress(payload) ?? payload;
+    await broadcast({ type: 'SearchProgress', payload: visiblePayload });
     await broadcast(stateUpdate(true, payload));
   }
 
   try {
     const run =
       mode === 'continue'
-        ? search.continueRun(seeds, negativeSeeds, initialRequestsUsed, onSearchProgress)
-        : search.run(seeds, negativeSeeds, onSearchProgress);
+        ? search.continueRun(
+            seeds,
+            negativeSeeds,
+            suppressedWorkIds(),
+            initialRequestsUsed,
+            onSearchProgress,
+          )
+        : search.run(seeds, negativeSeeds, suppressedWorkIds(), onSearchProgress);
 
     const { results, requestsUsed } = await run;
     lastResults = results;
+    const displayed = visibleResults();
     if (!lastProgress || lastProgress.phase !== 'done') {
       lastProgress = {
         phase: 'done',
         requestsUsed,
         expansionBudget: requestsUsed,
         frontierSize: 0,
-        message: `Found ${results.length} works`,
+        message: `Found ${displayed.length} works`,
         previewResults: results,
       };
     }
@@ -629,7 +736,7 @@ async function runSearch(
     await broadcast({
       type: 'SearchResults',
       payload: {
-        results,
+        results: displayed,
         requestsUsed,
         expansionBudget: lastProgress.expansionBudget,
         frontierSize: lastProgress.frontierSize,
@@ -657,5 +764,12 @@ async function runSearch(
 export default defineBackground(() => {
   ready = loadPersistedState();
   registerStatsImportPort(() => searching);
+  browser.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local' || !(SETTINGS_STORAGE_KEY in changes)) return;
+    const next = settingsFromStorageChange(changes[SETTINGS_STORAGE_KEY]);
+    if (!next) return;
+    settings = next;
+    void publishState();
+  });
   void ready.then(() => console.log('[ao3-search] background ready'));
 });
