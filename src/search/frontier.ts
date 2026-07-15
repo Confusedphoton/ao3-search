@@ -10,6 +10,8 @@ export interface FrontierNode {
   authority: number;
   precision: number;
   expectedInfo: number;
+  /** Acquisition score for non-expected-info policies (e.g. fragility). */
+  score?: number;
 }
 
 export function buildFrontier(

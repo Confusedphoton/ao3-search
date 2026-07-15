@@ -26,6 +26,7 @@ describe('normalizeSettings', () => {
       maxNegativeSeeds: SETTINGS_BOUNDS.maxNegativeSeeds.min,
       negativeRelevanceLambda: SETTINGS_BOUNDS.negativeRelevanceLambda.max,
       theme: 'system',
+      expansionPolicy: 'expected-info',
       permeability: DEFAULT_SETTINGS.permeability,
     });
   });
@@ -38,6 +39,7 @@ describe('normalizeSettings', () => {
         maxNegativeSeeds: 5,
         negativeRelevanceLambda: 1.5,
         theme: 'dark',
+        expansionPolicy: 'topological',
       }),
     ).toEqual({
       topResults: 40,
@@ -45,8 +47,13 @@ describe('normalizeSettings', () => {
       maxNegativeSeeds: 5,
       negativeRelevanceLambda: 1.5,
       theme: 'dark',
+      expansionPolicy: 'topological',
       permeability: DEFAULT_SETTINGS.permeability,
     });
+  });
+
+  it('falls back to expected-info for invalid expansion policy', () => {
+    expect(normalizeSettings({ expansionPolicy: 'beam' }).expansionPolicy).toBe('expected-info');
   });
 
   it('falls back to system theme for invalid values', () => {

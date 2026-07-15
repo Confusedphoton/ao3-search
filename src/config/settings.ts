@@ -18,6 +18,7 @@ export const SETTINGS_STORAGE_KEY = 'tunableSettings';
 
 export type FilterMode = 'whitelist' | 'blacklist';
 export type ThemePreference = 'light' | 'dark' | 'system';
+export type ExpansionPolicyKind = 'expected-info' | 'topological';
 
 export interface CategoryPermeabilityFilter {
   mode: FilterMode;
@@ -34,6 +35,7 @@ export interface TunableSettings {
   maxNegativeSeeds: number;
   negativeRelevanceLambda: number;
   theme: ThemePreference;
+  expansionPolicy: ExpansionPolicyKind;
   permeability: PermeabilityFilters;
 }
 
@@ -60,6 +62,7 @@ export const DEFAULT_SETTINGS: TunableSettings = {
   maxNegativeSeeds: MAX_NEGATIVE_SEEDS,
   negativeRelevanceLambda: NEGATIVE_RELEVANCE_LAMBDA,
   theme: 'system',
+  expansionPolicy: 'expected-info',
   permeability: defaultPermeabilityFilters(),
 };
 
@@ -97,6 +100,10 @@ function normalizeFilterMode(value: unknown): FilterMode {
 
 function normalizeTheme(value: unknown): ThemePreference {
   return value === 'light' || value === 'dark' ? value : 'system';
+}
+
+function normalizeExpansionPolicy(value: unknown): ExpansionPolicyKind {
+  return value === 'topological' ? 'topological' : 'expected-info';
 }
 
 function normalizeFilterValues(
@@ -179,6 +186,7 @@ export function normalizeSettings(raw: unknown): TunableSettings {
       DEFAULT_SETTINGS.negativeRelevanceLambda,
     ),
     theme: normalizeTheme(record.theme),
+    expansionPolicy: normalizeExpansionPolicy(record.expansionPolicy),
     permeability: normalizePermeabilityFilters(record.permeability),
   };
 }

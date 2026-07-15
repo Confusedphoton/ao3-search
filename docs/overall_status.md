@@ -54,10 +54,12 @@ The old `src/ppr/` module has been removed. Ranking and frontier scoring now liv
 ### Search orchestration
 
 - Cold start: fetch positive seeds (works, tags, or authors) and negative seeds if any.
-- Progressive expansion loop (`src/search/orchestrator.ts`): query propagation → rank unexplored nodes by expected information → pick one → fetch → merge → repeat.
-- **ε-greedy frontier selection** (95% highest expected information, 5% random) in `src/search/frontier.ts`.
-- Stopping: request budget exhausted (`EXPANSION_BUDGET = 20`), empty frontier, or max frontier expected information below threshold (`MIN_FRONTIER_EXPECTED_INFO`).
-- Work results ranked by **relevance**; frontier targets **expected information**.
+- Progressive expansion loop (`src/search/orchestrator.ts`): query propagation → select expandable node → fetch → merge → repeat.
+- **Selectable expansion policies** (options → Expansion policy):
+  - **Expected information** (default): ε-greedy on `relevance × authority / precision` (`src/search/frontier.ts`).
+  - **Topological fragility** (`src/search/topology/`): conductance field \(C(u,v)=\sqrt{R(u)R(v)}\sqrt{A(u)A(v)}\), potential \(\varphi=\sqrt{RA}\), candidate neighborhoods as connected **superlevel** sets plus boundary-alternate variants, refinement poset under inclusion, Hasse \(\beta_0/\beta_1\), acquisition \(\approx\) boundary exposure × potential influence. Ranking of works remains relevance-based.
+- Stopping: request budget, empty frontier, policy acquisition threshold (`MIN_FRONTIER_EXPECTED_INFO` or `MIN_FRONTIER_FRAGILITY`), or (topological) trivial Hasse topology stable for `TOPOLOGY_STABLE_ITERS` expansions.
+- Work results ranked by **relevance**.
 
 ### Seeds & negative queries
 

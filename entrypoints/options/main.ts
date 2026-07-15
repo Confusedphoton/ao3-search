@@ -23,6 +23,7 @@ import {
   type PermeabilityFilters,
   type ThemePreference,
   type TunableSettings,
+  type ExpansionPolicyKind,
 } from '@/src/config/settings';
 import { applyTheme } from '@/src/ui/theme';
 import { isExtensionMessage, type SuppressedWork } from '@/src/messaging/types';
@@ -42,6 +43,9 @@ const maxNegativeSeedsInput = document.querySelector<HTMLInputElement>(
   '#setting-max-negative-seeds',
 )!;
 const negativeLambdaInput = document.querySelector<HTMLInputElement>('#setting-negative-lambda')!;
+const expansionPolicySelect = document.querySelector<HTMLSelectElement>(
+  '#setting-expansion-policy',
+)!;
 const restoreDefaultsButton = document.querySelector<HTMLButtonElement>('#restore-defaults')!;
 const settingsStatusEl = document.querySelector<HTMLParagraphElement>('#settings-status')!;
 const suppressedListEl = document.querySelector<HTMLUListElement>('#suppressed-list')!;
@@ -137,6 +141,7 @@ function fillSettingsForm(settings: TunableSettings): void {
   maxSeedsInput.value = String(settings.maxSeeds);
   maxNegativeSeedsInput.value = String(settings.maxNegativeSeeds);
   negativeLambdaInput.value = String(settings.negativeRelevanceLambda);
+  expansionPolicySelect.value = settings.expansionPolicy;
   permeabilityState = structuredClone(settings.permeability);
   applyThemePreference(settings.theme);
   renderPermeabilityFilters();
@@ -148,6 +153,7 @@ function readSettingsForm(): TunableSettings {
     maxSeeds: maxSeedsInput.valueAsNumber,
     maxNegativeSeeds: maxNegativeSeedsInput.valueAsNumber,
     negativeRelevanceLambda: negativeLambdaInput.valueAsNumber,
+    expansionPolicy: expansionPolicySelect.value as ExpansionPolicyKind,
     theme: themeState,
     permeability: permeabilityState,
   });

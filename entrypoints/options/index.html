@@ -54,6 +54,19 @@
             <p class="field-hint">How many ranked works to show after a search.</p>
           </div>
 
+          <div class="field-row">
+            <label for="setting-expansion-policy">Expansion policy</label>
+            <select id="setting-expansion-policy" name="expansionPolicy">
+              <option value="expected-info">Expected information (default)</option>
+              <option value="topological">Topological fragility</option>
+            </select>
+            <p class="field-hint">
+              How the next AO3 page to fetch is chosen. Ranking of results stays relevance-based
+              either way. Topological expands nodes expected to simplify the hypothesis-space
+              topology.
+            </p>
+          </div>
+
           <div class="button-row">
             <button id="save-settings" type="submit">Save</button>
             <button id="restore-defaults" type="button" class="secondary">Restore defaults</button>

@@ -1,10 +1,10 @@
 import type { NegativeSeed, PositiveSeed, SearchProgressPayload, SearchResultItem } from '../messaging/types';
 import {
   EXPANSION_BUDGET,
-  MIN_FRONTIER_EXPECTED_INFO,
   PPR_ALPHA,
   PPR_MAX_ITERATIONS,
   PPR_TOLERANCE,
+  TOPOLOGY_STABLE_ITERS,
 } from '../config/constants';
 import { loadSettings } from '../config/settings';
 import {
@@ -20,8 +20,13 @@ import { buildNodePermeabilities } from '../propagation/permeability';
 import { runQueryPropagationViaWorker, closeComputeHost } from '../compute/host';
 import { loadGraphSnapshot } from '../storage/db';
 import { RequestHandler } from '../scheduler/requestHandler';
-import { DefaultExpansionPolicy, type ExpansionPolicy } from './expansionPolicy';
+import {
+  createExpansionPolicy,
+  DefaultExpansionPolicy,
+  type ExpansionPolicy,
+} from './expansionPolicy';
 import { buildFrontier } from './frontier';
+import { TopologyStabilityTracker } from './topology/orderComplex';
 
 export interface SearchRunResult {
   results: SearchResultItem[];
@@ -31,14 +36,22 @@ export interface SearchRunResult {
 export class SearchOrchestrator {
   private handler: RequestHandler;
   private policy: ExpansionPolicy;
+  private policyOverride: boolean;
   private cancelled = false;
 
   constructor(
     handler: RequestHandler = new RequestHandler(),
-    policy: ExpansionPolicy = new DefaultExpansionPolicy(),
+    policy?: ExpansionPolicy,
   ) {
     this.handler = handler;
+    this.policy = policy ?? new DefaultExpansionPolicy();
+    this.policyOverride = policy !== undefined;
+  }
+
+  /** Replace the expansion policy (e.g. from settings before a run). */
+  setPolicy(policy: ExpansionPolicy): void {
     this.policy = policy;
+    this.policyOverride = true;
   }
 
   cancel(): void {
@@ -87,7 +100,11 @@ export class SearchOrchestrator {
     const continuing = options.continueFromRequests > 0;
     const forceExpand = options.forceExpand ?? false;
     const settings = await loadSettings();
-    const { topResults, negativeRelevanceLambda, permeability } = settings;
+    const { topResults, negativeRelevanceLambda, permeability, expansionPolicy } = settings;
+    if (!this.policyOverride) {
+      this.policy = createExpansionPolicy(expansionPolicy);
+    }
+    const topologyTracker = new TopologyStabilityTracker(TOPOLOGY_STABLE_ITERS);
     const positiveKeys = seeds.map((s) => {
       if (s.kind === 'work') return { kind: 'work' as const, key: s.workId };
       if (s.kind === 'tag') return { kind: 'tag' as const, key: s.tagName };
@@ -219,9 +236,13 @@ export class SearchOrchestrator {
         relevance,
         authority,
         precision,
+        rowOutFractions: csr.rowOutFractions,
         exploratory: forceExpand,
       };
       const frontier = this.policy.buildFrontier(policyCtx);
+      const topo = this.policy.topologySnapshot?.() ?? null;
+      const topoStable = topo ? topologyTracker.update(topo) : false;
+      const topoLabel = topo ? ` · H₀=${topo.beta0} H₁=${topo.beta1}` : '';
 
       await emitPreview(csr, relevance, {
         phase: expansion === 0 && !continuing ? 'ranking' : 'expanding',
@@ -229,15 +250,21 @@ export class SearchOrchestrator {
         expansionBudget,
         frontierSize: frontier.length,
         message:
-          expansion === 0 && !continuing
+          (expansion === 0 && !continuing
             ? 'Initial estimate'
             : continuing && expansion === 0
               ? 'Refining results'
-              : 'Updating ranking',
+              : 'Updating ranking') + topoLabel,
       });
 
       if (frontier.length === 0) break;
-      if (!forceExpand && this.policy.maxExpectedInfo(frontier) < MIN_FRONTIER_EXPECTED_INFO) break;
+      if (
+        !forceExpand &&
+        this.policy.maxAcquisitionScore(frontier) < this.policy.minAcquisitionScore
+      ) {
+        break;
+      }
+      if (!forceExpand && topoStable) break;
 
       const plan = this.policy.selectNext(policyCtx);
       if (!plan) break;
