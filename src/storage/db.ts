@@ -1,8 +1,14 @@
 import { DB_NAME, DB_VERSION } from '../config/constants';
 import { mergeWorkMetadata, normalizeWorkMetadata } from '../ao3/workMeta';
+import {
+  defaultExplorationFields,
+  mergeExplorationStatus,
+  resolveListingExploration,
+} from '../graph/exploration';
 import type {
   AuthorMergeInput,
   AuthorWorkEdge,
+  ExplorationUpdateInput,
   GraphEdge,
   GraphNode,
   GraphSnapshot,
@@ -134,10 +140,22 @@ async function allocateNodeIds(count: number): Promise<number> {
 function normalizeGraphNode(node: GraphNode): GraphNode {
   const meta =
     node.kind === NodeKind.Work ? normalizeWorkMetadata(node.meta) : undefined;
+
+  // Migrate legacy boolean-only nodes from IndexedDB.
+  const explorationStatus =
+    node.explorationStatus ??
+    (node.explored ? ('complete' as const) : ('unexplored' as const));
+  const explored = explorationStatus === 'complete';
+
   return {
     ...node,
     wordCount: node.wordCount ?? null,
-    ...(meta ? { meta } : {}),
+    explorationStatus,
+    exploredAt: node.exploredAt ?? null,
+    listingNextPage: node.listingNextPage ?? null,
+    listingPagesFetched: node.listingPagesFetched ?? 0,
+    explored,
+    ...(meta ? { meta } : { meta: undefined }),
   };
 }
 
@@ -183,12 +201,25 @@ async function upsertNode(
       kind === NodeKind.Work
         ? mergeWorkMetadata(existing.meta, patch.meta)
         : undefined;
+
+    const explorationStatus = patch.explorationStatus ?? existing.explorationStatus;
+    const explored = explorationStatus === 'complete';
+
     const updated: GraphNode = {
       ...existing,
       ...patch,
       title,
       kind,
       key: resolvedKey,
+      explorationStatus,
+      exploredAt: patch.exploredAt !== undefined ? patch.exploredAt : existing.exploredAt,
+      listingNextPage:
+        patch.listingNextPage !== undefined ? patch.listingNextPage : existing.listingNextPage,
+      listingPagesFetched:
+        patch.listingPagesFetched !== undefined
+          ? patch.listingPagesFetched
+          : existing.listingPagesFetched,
+      explored,
       ...(kind === NodeKind.Work ? { meta } : { meta: undefined }),
     };
     await tx(['nodes'], 'readwrite', async (transaction) => {
@@ -197,18 +228,23 @@ async function upsertNode(
     return updated;
   }
 
-  const id = await allocateNodeIds(1);
+  const defaults = defaultExplorationFields('unexplored');
+  const explorationStatus = patch.explorationStatus ?? defaults.explorationStatus;
   const meta =
     kind === NodeKind.Work ? normalizeWorkMetadata(patch.meta) ?? patch.meta : undefined;
   const node: GraphNode = {
-    id,
+    id: await allocateNodeIds(1),
     kind,
     key: resolvedKey,
     title: patch.title,
     wordCount: patch.wordCount ?? null,
     estimatedFreq: patch.estimatedFreq ?? 1,
     calibratedFreq: patch.calibratedFreq ?? null,
-    explored: patch.explored ?? false,
+    explorationStatus,
+    exploredAt: patch.exploredAt ?? null,
+    listingNextPage: patch.listingNextPage ?? null,
+    listingPagesFetched: patch.listingPagesFetched ?? 0,
+    explored: explorationStatus === 'complete',
     ...(meta ? { meta } : {}),
   };
 
@@ -216,7 +252,7 @@ async function upsertNode(
     transaction.objectStore('nodes').put(node);
     transaction.objectStore('keyIndex').put({
       compoundKey: compoundKey(kind, resolvedKey),
-      nodeId: id,
+      nodeId: node.id,
     } satisfies KeyIndexRecord);
   });
 
@@ -252,10 +288,18 @@ function idbGetAll<T>(store: IDBObjectStore): Promise<T[]> {
 }
 
 export async function mergeWorkPage(input: WorkMergeInput): Promise<GraphNode> {
+  const now = Date.now();
+  const explorationStatus =
+    input.explorationStatus ??
+    (input.explored === false ? 'unexplored' : 'complete');
   const workNode = await upsertNode(NodeKind.Work, input.workId, {
     title: input.title,
     wordCount: input.wordCount ?? null,
-    explored: input.explored ?? true,
+    explorationStatus,
+    exploredAt: input.exploredAt ?? (explorationStatus === 'complete' ? now : null),
+    listingNextPage: null,
+    listingPagesFetched: 0,
+    explored: explorationStatus === 'complete',
     meta: input.meta,
   });
 
@@ -299,11 +343,55 @@ async function incrementAuthorEstimate(authorNodeId: number): Promise<void> {
   });
 }
 
-export async function mergeTagPage(input: TagMergeInput): Promise<GraphNode> {
-  const tagNode = await upsertNode(NodeKind.Tag, input.tagName, {
-    calibratedFreq: input.workCount,
-    explored: input.explored ?? true,
+async function applyListingHubExploration(
+  node: GraphNode,
+  input: {
+    workCount: number | null;
+    page?: number;
+    nextPage?: number | null;
+    explorationStatus?: GraphNode['explorationStatus'];
+    exploredAt?: number | null;
+    explored?: boolean;
+  },
+): Promise<GraphNode> {
+  // Explicit status from caller (tests / legacy) bypasses pagination resolution.
+  if (input.explorationStatus != null || (input.explored != null && input.page == null)) {
+    const status =
+      input.explorationStatus ??
+      (input.explored === false ? 'unexplored' : 'complete');
+    return upsertNode(node.kind, node.key, {
+      calibratedFreq: input.workCount ?? node.calibratedFreq,
+      explorationStatus: status,
+      exploredAt: input.exploredAt ?? (status === 'unexplored' ? node.exploredAt : Date.now()),
+      listingNextPage: status === 'partial' ? (input.nextPage ?? node.listingNextPage ?? 1) : null,
+      listingPagesFetched:
+        status === 'unexplored' ? node.listingPagesFetched : Math.max(node.listingPagesFetched, 1),
+      explored: status === 'complete',
+    });
+  }
+
+  const resolved = resolveListingExploration({
+    previousStatus: node.explorationStatus,
+    previousCalibratedFreq: node.calibratedFreq,
+    previousPagesFetched: node.listingPagesFetched,
+    workCount: input.workCount,
+    nextPage: input.nextPage ?? null,
+    pageFetched: input.page ?? 1,
   });
+
+  return upsertNode(node.kind, node.key, {
+    calibratedFreq: resolved.calibratedFreq,
+    explorationStatus: resolved.explorationStatus,
+    exploredAt: resolved.exploredAt,
+    listingNextPage: resolved.listingNextPage,
+    listingPagesFetched: resolved.listingPagesFetched,
+    explored: resolved.explorationStatus === 'complete',
+  });
+}
+
+export async function mergeTagPage(input: TagMergeInput): Promise<GraphNode> {
+  let tagNode = await upsertNode(NodeKind.Tag, input.tagName, {});
+  tagNode = await applyListingHubExploration(tagNode, input);
 
   for (const work of input.works) {
     await mergeListedWork(work, { kind: 'tag', tagNodeId: tagNode.id });
@@ -313,10 +401,12 @@ export async function mergeTagPage(input: TagMergeInput): Promise<GraphNode> {
 }
 
 export async function mergeAuthorPage(input: AuthorMergeInput): Promise<GraphNode> {
-  const authorNode = await upsertNode(NodeKind.Author, input.authorKey, {
+  let authorNode = await upsertNode(NodeKind.Author, input.authorKey, {
     title: input.displayName,
-    calibratedFreq: input.workCount,
-    explored: input.explored ?? true,
+  });
+  authorNode = await applyListingHubExploration(authorNode, {
+    ...input,
+    workCount: input.workCount,
   });
 
   for (const work of input.works) {
@@ -331,13 +421,83 @@ export async function mergeSearchPage(input: SearchMergeInput): Promise<void> {
   for (const work of input.works) {
     await mergeDiscoveredWork(work);
   }
+
+  if (input.marksNodeId == null) return;
+
+  await applyExplorationFromListing(input.marksNodeId, {
+    workCount: input.workCount ?? null,
+    page: input.page ?? 1,
+    nextPage: input.nextPage ?? null,
+  });
+}
+
+export async function applyExplorationUpdate(input: ExplorationUpdateInput): Promise<void> {
+  await tx('nodes', 'readwrite', async (transaction) => {
+    const store = transaction.objectStore('nodes');
+    const node = await idbGet<GraphNode>(store, input.nodeId);
+    if (!node) return;
+    const normalized = normalizeGraphNode(node);
+    store.put({
+      ...normalized,
+      explorationStatus: input.explorationStatus,
+      exploredAt: input.exploredAt,
+      listingNextPage: input.listingNextPage,
+      listingPagesFetched: input.listingPagesFetched,
+      calibratedFreq:
+        input.calibratedFreq !== undefined ? input.calibratedFreq : normalized.calibratedFreq,
+      explored: input.explorationStatus === 'complete',
+    });
+  });
+}
+
+async function applyExplorationFromListing(
+  nodeId: number,
+  input: { workCount: number | null; page: number; nextPage: number | null },
+): Promise<void> {
+  const existing = await tx('nodes', 'readonly', async (transaction) => {
+    const node = await idbGet<GraphNode>(transaction.objectStore('nodes'), nodeId);
+    return node ? normalizeGraphNode(node) : null;
+  });
+  if (!existing) return;
+
+  const resolved = resolveListingExploration({
+    previousStatus: existing.explorationStatus,
+    previousCalibratedFreq: existing.calibratedFreq,
+    previousPagesFetched: existing.listingPagesFetched,
+    workCount: input.workCount,
+    nextPage: input.nextPage,
+    pageFetched: input.page,
+  });
+
+  await applyExplorationUpdate({
+    nodeId,
+    explorationStatus: resolved.explorationStatus,
+    exploredAt: resolved.exploredAt,
+    listingNextPage: resolved.listingNextPage,
+    listingPagesFetched: resolved.listingPagesFetched,
+    calibratedFreq: resolved.calibratedFreq,
+  });
 }
 
 /** Merge a work discovered from a listing blurb (partial data, not explored). */
 async function mergeDiscoveredWork(work: ListedWorkInput): Promise<GraphNode> {
+  const existing = await getWorkNode(work.workId);
+  // Never downgrade a fully explored work via blurb merge.
+  if (existing?.explorationStatus === 'complete') {
+    return upsertNode(NodeKind.Work, work.workId, {
+      title: work.title,
+      ...(work.wordCount != null ? { wordCount: work.wordCount } : {}),
+      ...(work.meta ? { meta: work.meta } : {}),
+    });
+  }
+
   const workNode = await upsertNode(NodeKind.Work, work.workId, {
     title: work.title,
     ...(work.wordCount != null ? { wordCount: work.wordCount } : {}),
+    explorationStatus: existing?.explorationStatus ?? 'unexplored',
+    exploredAt: existing?.exploredAt ?? null,
+    listingNextPage: existing?.listingNextPage ?? null,
+    listingPagesFetched: existing?.listingPagesFetched ?? 0,
     explored: false,
     ...(work.meta ? { meta: work.meta } : {}),
   });
@@ -379,12 +539,12 @@ async function mergeListedWork(
 }
 
 export async function markNodeExplored(nodeId: number): Promise<void> {
-  await tx('nodes', 'readwrite', async (transaction) => {
-    const store = transaction.objectStore('nodes');
-    const node = await idbGet<GraphNode>(store, nodeId);
-    if (!node) return;
-    node.explored = true;
-    store.put(node);
+  await applyExplorationUpdate({
+    nodeId,
+    explorationStatus: 'complete',
+    exploredAt: Date.now(),
+    listingNextPage: null,
+    listingPagesFetched: 1,
   });
 }
 
@@ -479,13 +639,26 @@ function mergeImportedNodeFields(existing: GraphNode, imported: GraphNode): Grap
       ? mergeWorkMetadata(existing.meta, imported.meta)
       : undefined;
 
+  const a = normalizeGraphNode(existing);
+  const b = normalizeGraphNode(imported);
+  const explorationStatus = mergeExplorationStatus(a.explorationStatus, b.explorationStatus);
+
   return {
-    ...existing,
+    ...a,
     title,
     wordCount: imported.wordCount ?? existing.wordCount ?? null,
     estimatedFreq: Math.max(existing.estimatedFreq, imported.estimatedFreq),
     calibratedFreq,
-    explored: existing.explored || imported.explored,
+    explorationStatus,
+    exploredAt: Math.max(a.exploredAt ?? 0, b.exploredAt ?? 0) || null,
+    listingNextPage:
+      explorationStatus === 'partial'
+        ? (b.listingNextPage ?? a.listingNextPage)
+        : explorationStatus === 'complete'
+          ? null
+          : a.listingNextPage,
+    listingPagesFetched: Math.max(a.listingPagesFetched, b.listingPagesFetched),
+    explored: explorationStatus === 'complete',
     ...(existing.kind === NodeKind.Work ? { meta } : {}),
   };
 }
@@ -687,18 +860,31 @@ async function resolveGraphTagName(tagName: string): Promise<string> {
 }
 
 function mergeTagNodeFields(target: GraphNode, source: GraphNode): GraphNode {
+  const a = normalizeGraphNode(target);
+  const b = normalizeGraphNode(source);
   const calibratedFreq =
-    target.calibratedFreq == null
-      ? source.calibratedFreq
-      : source.calibratedFreq == null
-        ? target.calibratedFreq
-        : Math.max(target.calibratedFreq, source.calibratedFreq);
+    a.calibratedFreq == null
+      ? b.calibratedFreq
+      : b.calibratedFreq == null
+        ? a.calibratedFreq
+        : Math.max(a.calibratedFreq, b.calibratedFreq);
+
+  const explorationStatus = mergeExplorationStatus(a.explorationStatus, b.explorationStatus);
 
   return {
-    ...target,
-    estimatedFreq: Math.max(target.estimatedFreq, source.estimatedFreq),
+    ...a,
+    estimatedFreq: Math.max(a.estimatedFreq, b.estimatedFreq),
     calibratedFreq,
-    explored: target.explored || source.explored,
+    explorationStatus,
+    exploredAt: Math.max(a.exploredAt ?? 0, b.exploredAt ?? 0) || null,
+    listingNextPage:
+      explorationStatus === 'partial'
+        ? (b.listingNextPage ?? a.listingNextPage)
+        : explorationStatus === 'complete'
+          ? null
+          : a.listingNextPage,
+    listingPagesFetched: Math.max(a.listingPagesFetched, b.listingPagesFetched),
+    explored: explorationStatus === 'complete',
   };
 }
 
@@ -826,7 +1012,7 @@ export async function ensureTagNodeFromStats(tag: StatsTagRecord): Promise<Graph
   return upsertNode(NodeKind.Tag, tagName, {
     estimatedFreq: 1,
     calibratedFreq: canonical.cachedCount,
-    explored: false,
+    ...defaultExplorationFields('unexplored'),
   });
 }
 

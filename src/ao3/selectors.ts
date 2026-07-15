@@ -26,6 +26,9 @@ export const selectors = {
   workBlurbRequiredWarnings: 'ul.required-tags .warnings',
   workBlurbRequiredCategory: 'ul.required-tags .category',
   workBlurbRequiredWip: 'ul.required-tags .iswip',
+  pagination: 'ol.pagination',
+  paginationNext: 'ol.pagination li.next a',
+  paginationCurrent: 'ol.pagination li.current',
 } as const;
 
 export const tagCountPattern = /([\d,]+)\s+Works?/i;

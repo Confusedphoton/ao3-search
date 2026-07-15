@@ -275,24 +275,31 @@ async function ingestPageData(payload: PageData): Promise<void> {
       authors: payload.authors,
       wordCount: payload.wordCount,
       meta: payload.meta,
-      explored: true,
+      explorationStatus: 'complete',
     });
   } else if (payload.kind === 'tag') {
     await mergeTagPage({
       tagName: payload.tagName,
       workCount: payload.workCount,
       works: payload.works,
-      explored: true,
+      page: payload.page,
+      nextPage: payload.nextPage,
     });
   } else if (payload.kind === 'search') {
-    await mergeSearchPage({ works: payload.works });
+    await mergeSearchPage({
+      works: payload.works,
+      workCount: payload.workCount,
+      page: payload.page,
+      nextPage: payload.nextPage,
+    });
   } else {
     await mergeAuthorPage({
       authorKey: payload.authorKey,
       displayName: payload.displayName,
       workCount: payload.workCount,
       works: payload.works,
-      explored: true,
+      page: payload.page,
+      nextPage: payload.nextPage,
     });
   }
   await publishGraphStats();

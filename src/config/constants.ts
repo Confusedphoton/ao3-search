@@ -29,7 +29,10 @@ export const NEGATIVE_RELEVANCE_LAMBDA = 3;
 export const DB_NAME = 'ao3-search';
 export const DB_VERSION = 6;
 
-export const GRAPH_EXPORT_VERSION = 1;
+export const GRAPH_EXPORT_VERSION = 2;
+
+/** Re-check complete tag/author hubs older than this for work-count growth. */
+export const EXPLORATION_STALE_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** AO3 official stats dump tag types that are not semantic work tags. */
 export const STATS_SYSTEM_TAG_TYPES = new Set([

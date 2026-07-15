@@ -1,4 +1,5 @@
 import { parseListedWorks } from './parseListings';
+import { parseListingPagination } from './parsePagination';
 import { selectors, tagCountPattern } from './selectors';
 import type { TagPageData } from './types';
 import { parseTagNameFromUrl, tagWorksUrl } from './types';
@@ -13,12 +14,16 @@ export function parseTagPage(doc: Document, url: string): TagPageData | null {
     ? Number.parseInt(countMatch[1].replace(/,/g, ''), 10)
     : null;
 
+  const { page, nextPage } = parseListingPagination(doc, url);
+
   return {
     kind: 'tag',
     tagName,
     workCount,
     works: parseListedWorks(doc),
-    url: tagWorksUrl(tagName),
+    url: tagWorksUrl(tagName, page),
+    page,
+    nextPage,
   };
 }
 

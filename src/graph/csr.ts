@@ -1,4 +1,5 @@
 import { hubFrequency, rowOutFraction } from './outgoingOrder';
+import { normalizeExplorationFields } from './exploration';
 import type { GraphNode, GraphSnapshot } from './types';
 import { NodeKind } from './types';
 
@@ -23,7 +24,9 @@ export function tagWeight(freq: number): number {
 }
 
 export function buildCSR(snapshot: GraphSnapshot): CSRGraph {
-  const nodeById = new Map(snapshot.nodes.map((n) => [n.id, n]));
+  const nodeById = new Map(
+    snapshot.nodes.map((n) => [n.id, normalizeExplorationFields(n)]),
+  );
   const nodeIds = snapshot.nodes.map((n) => n.id).sort((a, b) => a - b);
   const indexByNodeId = new Map<number, number>();
   nodeIds.forEach((id, index) => indexByNodeId.set(id, index));

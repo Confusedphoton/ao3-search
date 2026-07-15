@@ -2,6 +2,7 @@ import { GRAPH_EXPORT_VERSION } from '../config/constants';
 import { normalizeWorkMetadata } from '../ao3/workMeta';
 import type {
   AuthorWorkEdge,
+  ExplorationStatus,
   GraphEdge,
   GraphExport,
   GraphImportMode,
@@ -16,8 +17,14 @@ import {
   loadGraphSnapshot,
 } from './db';
 
+const SUPPORTED_EXPORT_VERSIONS = new Set([1, GRAPH_EXPORT_VERSION]);
+
 function isNodeKind(value: unknown): value is NodeKind {
   return value === NodeKind.Work || value === NodeKind.Tag || value === NodeKind.Author;
+}
+
+function isExplorationStatus(value: unknown): value is ExplorationStatus {
+  return value === 'unexplored' || value === 'partial' || value === 'complete';
 }
 
 function parseGraphNode(value: unknown): GraphNode | null {
@@ -28,9 +35,40 @@ function parseGraphNode(value: unknown): GraphNode | null {
   if (typeof record.key !== 'string' || !record.key) return null;
   if (typeof record.estimatedFreq !== 'number' || record.estimatedFreq < 0) return null;
   if (record.calibratedFreq != null && typeof record.calibratedFreq !== 'number') return null;
-  if (typeof record.explored !== 'boolean') return null;
   if (record.title != null && typeof record.title !== 'string') return null;
   if (record.wordCount != null && typeof record.wordCount !== 'number') return null;
+
+  let explorationStatus: ExplorationStatus;
+  if (isExplorationStatus(record.explorationStatus)) {
+    explorationStatus = record.explorationStatus;
+  } else if (typeof record.explored === 'boolean') {
+    explorationStatus = record.explored ? 'complete' : 'unexplored';
+  } else {
+    return null;
+  }
+
+  const exploredAt =
+    record.exploredAt == null
+      ? null
+      : typeof record.exploredAt === 'number' && Number.isFinite(record.exploredAt)
+        ? record.exploredAt
+        : null;
+  if (record.exploredAt != null && exploredAt == null) return null;
+
+  const listingNextPage =
+    record.listingNextPage == null
+      ? null
+      : typeof record.listingNextPage === 'number' && Number.isInteger(record.listingNextPage)
+        ? record.listingNextPage
+        : null;
+  if (record.listingNextPage != null && listingNextPage == null) return null;
+
+  const listingPagesFetched =
+    typeof record.listingPagesFetched === 'number' &&
+    Number.isInteger(record.listingPagesFetched) &&
+    record.listingPagesFetched >= 0
+      ? record.listingPagesFetched
+      : 0;
 
   const meta =
     record.kind === NodeKind.Work ? normalizeWorkMetadata(record.meta) : undefined;
@@ -43,7 +81,11 @@ function parseGraphNode(value: unknown): GraphNode | null {
     wordCount: typeof record.wordCount === 'number' ? record.wordCount : null,
     estimatedFreq: record.estimatedFreq,
     calibratedFreq: record.calibratedFreq ?? null,
-    explored: record.explored,
+    explorationStatus,
+    exploredAt,
+    listingNextPage: explorationStatus === 'complete' ? null : listingNextPage,
+    listingPagesFetched,
+    explored: explorationStatus === 'complete',
     ...(meta ? { meta } : {}),
   };
 }
@@ -67,7 +109,9 @@ function parseAuthorWorkEdge(value: unknown): AuthorWorkEdge | null {
 export function parseGraphExport(value: unknown): GraphExport | null {
   if (!value || typeof value !== 'object') return null;
   const record = value as Record<string, unknown>;
-  if (record.version !== GRAPH_EXPORT_VERSION) return null;
+  if (typeof record.version !== 'number' || !SUPPORTED_EXPORT_VERSIONS.has(record.version)) {
+    return null;
+  }
   if (typeof record.exportedAt !== 'string' || !record.exportedAt) return null;
   if (typeof record.nextNodeId !== 'number' || !Number.isInteger(record.nextNodeId) || record.nextNodeId < 0) {
     return null;

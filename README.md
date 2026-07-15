@@ -109,7 +109,7 @@ This is where the project is headed—not a promise of dates or order, but the l
 These are gaps between the current MVP and [docs/design.md](docs/design.md); see [overall_status.md](overall_status.md) for the full checklist.
 
 - **Search loop** — beam search with a maintained top-K frontier; post-expansion branch evaluation (score change, newly promoted nodes, authority redistribution); convergence-based early stopping when relevance stabilizes across iterations.
-- **Exploration** — tag/author fetches only parse the first listing page (no pagination); passive browsing enrichment is skipped while a search is running.
+- **Exploration** — tag/author listing pagination with `partial`/`complete` status and stale rechecks; `/works/search` is request-handler-ready but unused by the default policy; passive browsing enrichment is skipped while a search is running.
 - **Query layer** — each expansion rebuilds CSR and reruns the full propagation pipeline; no persistent query-graph object or cached propagation state between iterations.
 - **Graph extensions** — bookmark graph (reader → work edges) is design-only so far.
 - **Compute routing** — propagation runs in a Web Worker spawned from the service worker; the offscreen-document coordinator from the design doc is not used.

@@ -72,7 +72,7 @@ describe('graph import/export', () => {
 
   it('parses valid exports and rejects invalid files', () => {
     expect(parseGraphExport(sampleExport())).not.toBeNull();
-    expect(parseGraphExport({ ...sampleExport(), version: 2 })).toBeNull();
+    expect(parseGraphExport({ ...sampleExport(), version: 99 })).toBeNull();
     expect(parseGraphExport({ ...sampleExport(), edges: [{ workNodeId: 0, tagNodeId: 99 }] })).toBeNull();
   });
 
@@ -85,7 +85,7 @@ describe('graph import/export', () => {
     });
 
     const exported = await exportGraph();
-    expect(exported.version).toBe(1);
+    expect(exported.version).toBe(2);
     expect(exported.nodes.some((node) => node.kind === NodeKind.Work && node.key === '42')).toBe(true);
     expect(exported.edges.length).toBeGreaterThan(0);
     expect(exported.authorEdges.length).toBeGreaterThan(0);

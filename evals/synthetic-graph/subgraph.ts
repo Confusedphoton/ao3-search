@@ -1,4 +1,5 @@
 import { buildCSR, type CSRGraph } from '@/src/graph/csr';
+import { normalizeExplorationFields } from '@/src/graph/exploration';
 import { NodeKind, type AuthorWorkEdge, type GraphEdge, type GraphNode } from '@/src/graph/types';
 import { SyntheticGraph } from '../../tests/fixtures/syntheticGraph';
 
@@ -74,11 +75,17 @@ export function extractDepthBall(
     const explored = dist < depth || depth === 0;
     const id = nextId++;
     oldToNewId.set(oldIndex, id);
-    nodes.push({
-      ...source,
-      id,
-      explored,
-    });
+    nodes.push(
+      normalizeExplorationFields({
+        ...source,
+        id,
+        explorationStatus: explored ? 'complete' : 'unexplored',
+        explored,
+        exploredAt: explored ? (source.exploredAt ?? 1) : null,
+        listingNextPage: null,
+        listingPagesFetched: explored ? Math.max(source.listingPagesFetched ?? 1, 1) : 0,
+      }),
+    );
   }
 
   const edges: GraphEdge[] = [];

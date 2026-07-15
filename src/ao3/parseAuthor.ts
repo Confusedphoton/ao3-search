@@ -1,4 +1,5 @@
 import { parseListedWorks } from './parseListings';
+import { parseListingPagination } from './parsePagination';
 import { selectors, tagCountPattern } from './selectors';
 import type { AuthorPageData } from './types';
 import { authorWorksUrl, parseAuthorKeyFromUrl } from './types';
@@ -16,13 +17,17 @@ export function parseAuthorPage(doc: Document, url: string): AuthorPageData | nu
   const displayName =
     heading.replace(/\s*-\s*Works.*$/i, '').replace(/^Works by\s+/i, '').trim() || authorKey;
 
+  const { page, nextPage } = parseListingPagination(doc, url);
+
   return {
     kind: 'author',
     authorKey,
     displayName,
     workCount,
     works: parseListedWorks(doc),
-    url: authorWorksUrl(authorKey),
+    url: authorWorksUrl(authorKey, page),
+    page,
+    nextPage,
   };
 }
 

@@ -34,6 +34,8 @@ export interface TagPageData {
   workCount: number | null;
   works: ListedWork[];
   url: string;
+  page: number;
+  nextPage: number | null;
 }
 
 export interface AuthorPageData {
@@ -43,12 +45,17 @@ export interface AuthorPageData {
   workCount: number | null;
   works: ListedWork[];
   url: string;
+  page: number;
+  nextPage: number | null;
 }
 
 export interface SearchPageData {
   kind: 'search';
   works: ListedWork[];
   url: string;
+  workCount: number | null;
+  page: number;
+  nextPage: number | null;
 }
 
 export type PageData = WorkPageData | TagPageData | AuthorPageData | SearchPageData;
@@ -93,12 +100,14 @@ export function decodeAo3TagParam(param: string): string {
   });
 }
 
-export function tagWorksUrl(tagName: string): string {
-  return `${AO3_ORIGIN}/tags/${encodeAo3TagParam(tagName)}/works`;
+export function tagWorksUrl(tagName: string, page = 1): string {
+  const base = `${AO3_ORIGIN}/tags/${encodeAo3TagParam(tagName)}/works`;
+  return page > 1 ? `${base}?page=${page}` : base;
 }
 
-export function authorWorksUrl(authorKey: string): string {
-  return `${AO3_ORIGIN}/users/${authorKey}/works`;
+export function authorWorksUrl(authorKey: string, page = 1): string {
+  const base = `${AO3_ORIGIN}/users/${authorKey}/works`;
+  return page > 1 ? `${base}?page=${page}` : base;
 }
 
 export function parseWorkIdFromUrl(url: string): string | null {

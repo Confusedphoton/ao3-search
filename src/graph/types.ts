@@ -16,6 +16,8 @@ export interface WorkMetadata {
   categories: string[];
 }
 
+export type ExplorationStatus = 'unexplored' | 'partial' | 'complete';
+
 export interface GraphNode {
   id: number;
   kind: NodeKind;
@@ -24,6 +26,16 @@ export interface GraphNode {
   wordCount: number | null;
   estimatedFreq: number;
   calibratedFreq: number | null;
+  explorationStatus: ExplorationStatus;
+  /** Last successful exploration fetch (ms epoch); null if never explored. */
+  exploredAt: number | null;
+  /** Next listing/search page to fetch; null when unknown or exhausted. */
+  listingNextPage: number | null;
+  listingPagesFetched: number;
+  /**
+   * Legacy mirror of `explorationStatus === 'complete'`.
+   * Prefer `explorationStatus` / helpers in `exploration.ts`.
+   */
   explored: boolean;
   /** Present on work nodes when scraped; omitted for tags/authors. */
   meta?: WorkMetadata;
@@ -104,7 +116,10 @@ export interface WorkMergeInput {
   tags: string[];
   authors: WorkAuthorInput[];
   wordCount?: number | null;
+  /** When true/omitted for a full work page, marks complete. */
   explored?: boolean;
+  explorationStatus?: ExplorationStatus;
+  exploredAt?: number | null;
   meta?: WorkMetadata;
 }
 
@@ -119,6 +134,11 @@ export interface ListedWorkInput {
 
 export interface SearchMergeInput {
   works: ListedWorkInput[];
+  /** Optional hub to update exploration status from this search page. */
+  marksNodeId?: number;
+  workCount?: number | null;
+  page?: number;
+  nextPage?: number | null;
 }
 
 export interface TagMergeInput {
@@ -126,6 +146,10 @@ export interface TagMergeInput {
   workCount: number | null;
   works: ListedWorkInput[];
   explored?: boolean;
+  explorationStatus?: ExplorationStatus;
+  exploredAt?: number | null;
+  page?: number;
+  nextPage?: number | null;
 }
 
 export interface AuthorMergeInput {
@@ -134,4 +158,17 @@ export interface AuthorMergeInput {
   workCount: number | null;
   works: ListedWorkInput[];
   explored?: boolean;
+  explorationStatus?: ExplorationStatus;
+  exploredAt?: number | null;
+  page?: number;
+  nextPage?: number | null;
+}
+
+export interface ExplorationUpdateInput {
+  nodeId: number;
+  explorationStatus: ExplorationStatus;
+  exploredAt: number;
+  listingNextPage: number | null;
+  listingPagesFetched: number;
+  calibratedFreq?: number | null;
 }

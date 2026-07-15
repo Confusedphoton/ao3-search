@@ -1,5 +1,6 @@
 import { CONTINUE_FRONTIER_EPSILON, FRONTIER_EPSILON, PRECISION_EPS } from '../config/constants';
 import type { CSRGraph } from '../graph/csr';
+import { isExpandable } from '../graph/exploration';
 import { NodeKind } from '../graph/types';
 
 export interface FrontierNode {
@@ -16,11 +17,12 @@ export function buildFrontier(
   relevance: Float64Array,
   authority: Float64Array,
   precision: Float64Array,
+  now = Date.now(),
 ): FrontierNode[] {
   const frontier: FrontierNode[] = [];
   for (let index = 0; index < csr.nodeByIndex.length; index++) {
     const node = csr.nodeByIndex[index];
-    if (node.explored) continue;
+    if (!isExpandable(node, now)) continue;
     const rel = relevance[index];
     const auth = authority[index];
     const prec = precision[index];

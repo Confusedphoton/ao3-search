@@ -87,7 +87,7 @@ The old `src/ppr/` module has been removed. Ranking and frontier scoring now liv
 | Stopping conditions | Three of four: budget, frontier expected-info threshold, empty frontier. Missing: relevance-distribution convergence check across expansion iterations. (Per-signal propagation still converges internally via tolerance.) |
 | Offscreen document | Not used. Propagation worker is spawned directly from the service worker. |
 | Passive browsing enrichment | Works when idle, but disabled during an active search (`ingestPageData` returns early if searching). |
-| Maximize info per request | Tag/author pages only parse the first listing page of works; no pagination. |
+| Maximize info per request | Tag/author listing pagination is implemented; hubs stay `partial` until exhausted. Stale complete hubs can be demoted when AO3 work counts grow. `/works/search` is available on the request handler but unused by the default expansion policy. |
 | Synonym discovery | Emergent in the algorithm (similar tags share authority) plus explicit tag merges via stats dump. No UI or analytics for surfacing synonym clusters. |
 | Global rarity × local enrichment | Only basic `calibratedFreq ?? estimatedFreq` weighting; no combined rarity×enrichment experiments. |
 

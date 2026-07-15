@@ -73,15 +73,26 @@ function nodeRefKey(kind: NodeKind, key: string): string {
 }
 
 function defaultGraphNode(id: number, kind: NodeKind, key: string, overrides: Partial<GraphNode> = {}): GraphNode {
+  const explorationStatus =
+    overrides.explorationStatus ?? (overrides.explored ? 'complete' : 'unexplored');
   return {
     id,
     kind,
     key,
     estimatedFreq: 1,
     calibratedFreq: null,
-    explored: false,
     wordCount: null,
+    explorationStatus,
+    exploredAt: explorationStatus === 'complete' ? 1 : null,
+    listingNextPage: null,
+    listingPagesFetched: explorationStatus === 'unexplored' ? 0 : 1,
+    explored: explorationStatus === 'complete',
     ...overrides,
+    explorationStatus:
+      overrides.explorationStatus ?? (overrides.explored ? 'complete' : 'unexplored'),
+    explored:
+      (overrides.explorationStatus ?? (overrides.explored ? 'complete' : 'unexplored')) ===
+      'complete',
   };
 }
 
@@ -142,6 +153,7 @@ function buildSnapshot(
     register(NodeKind.Work, work.key, {
       title: work.title,
       wordCount: work.wordCount ?? null,
+      explorationStatus: work.explored ? 'complete' : 'unexplored',
       explored: work.explored ?? false,
       estimatedFreq: work.estimatedFreq ?? 1,
       calibratedFreq: work.calibratedFreq ?? null,
@@ -149,6 +161,7 @@ function buildSnapshot(
   }
   for (const tag of tagByKey.values()) {
     register(NodeKind.Tag, tag.key, {
+      explorationStatus: tag.explored ? 'complete' : 'unexplored',
       explored: tag.explored ?? false,
       estimatedFreq: tag.estimatedFreq ?? 1,
       calibratedFreq: tag.calibratedFreq ?? null,
@@ -157,6 +170,7 @@ function buildSnapshot(
   for (const author of authorByKey.values()) {
     register(NodeKind.Author, author.key, {
       title: author.title,
+      explorationStatus: author.explored ? 'complete' : 'unexplored',
       explored: author.explored ?? false,
       estimatedFreq: author.estimatedFreq ?? 2,
     });

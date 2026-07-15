@@ -19,8 +19,9 @@ import { queryInputFromCsr } from '../propagation';
 import { buildNodePermeabilities } from '../propagation/permeability';
 import { runQueryPropagationViaWorker, closeComputeHost } from '../compute/host';
 import { loadGraphSnapshot } from '../storage/db';
-import { RequestScheduler } from '../scheduler/scheduler';
-import { buildFrontier, maxFrontierExpectedInfo, pickNextFrontier } from './frontier';
+import { RequestHandler } from '../scheduler/requestHandler';
+import { DefaultExpansionPolicy, type ExpansionPolicy } from './expansionPolicy';
+import { buildFrontier } from './frontier';
 
 export interface SearchRunResult {
   results: SearchResultItem[];
@@ -28,8 +29,17 @@ export interface SearchRunResult {
 }
 
 export class SearchOrchestrator {
-  private scheduler = new RequestScheduler();
+  private handler: RequestHandler;
+  private policy: ExpansionPolicy;
   private cancelled = false;
+
+  constructor(
+    handler: RequestHandler = new RequestHandler(),
+    policy: ExpansionPolicy = new DefaultExpansionPolicy(),
+  ) {
+    this.handler = handler;
+    this.policy = policy;
+  }
 
   cancel(): void {
     this.cancelled = true;
@@ -102,7 +112,7 @@ export class SearchOrchestrator {
       });
 
       const beforeSeeds = await loadGraphSnapshot();
-      await this.scheduler.ensurePositiveSeeds(seeds);
+      await this.handler.ensurePositiveSeeds(seeds);
       if (negativeSeeds.length > 0) {
         await onProgress({
           phase: 'cold-start',
@@ -111,10 +121,10 @@ export class SearchOrchestrator {
           frontierSize: 0,
           message: 'Fetching negative seeds…',
         });
-        await this.scheduler.ensureNegativeSeeds(negativeSeeds);
+        await this.handler.ensureNegativeSeeds(negativeSeeds);
       }
       const afterSeeds = await loadGraphSnapshot();
-      requestsUsed += countNewlyExplored(beforeSeeds.nodes, afterSeeds.nodes);
+      requestsUsed += countSeedFetches(beforeSeeds.nodes, afterSeeds.nodes);
 
       if (this.cancelled) {
         await closeComputeHost();
@@ -137,8 +147,6 @@ export class SearchOrchestrator {
       }
     }
 
-    // Seed/avoid works are omitted from stored rankings. Suppressed works stay in
-    // the ranked list (so toggles can restore them) but are filtered before display.
     const excludeWorkIds = new Set(seedWorkIds);
     for (const seed of negativeSeeds) {
       if (seed.kind === 'work') excludeWorkIds.add(seed.workId);
@@ -206,7 +214,14 @@ export class SearchOrchestrator {
       const relevance = Float64Array.from(propagation.relevance);
       const authority = Float64Array.from(propagation.authority);
       const precision = Float64Array.from(propagation.precision);
-      const frontier = buildFrontier(csr, relevance, authority, precision);
+      const policyCtx = {
+        csr,
+        relevance,
+        authority,
+        precision,
+        exploratory: forceExpand,
+      };
+      const frontier = this.policy.buildFrontier(policyCtx);
 
       await emitPreview(csr, relevance, {
         phase: expansion === 0 && !continuing ? 'ranking' : 'expanding',
@@ -222,14 +237,13 @@ export class SearchOrchestrator {
       });
 
       if (frontier.length === 0) break;
-      if (!forceExpand && maxFrontierExpectedInfo(frontier) < MIN_FRONTIER_EXPECTED_INFO) break;
+      if (!forceExpand && this.policy.maxExpectedInfo(frontier) < MIN_FRONTIER_EXPECTED_INFO) break;
 
-      const next = pickNextFrontier(frontier, { exploratory: forceExpand });
-      if (!next) break;
+      const plan = this.policy.selectNext(policyCtx);
+      if (!plan) break;
 
-      const node = csr.nodeByIndex[next.index];
-      await this.scheduler.expandNode(node);
-      requestsUsed++;
+      const outcome = await this.handler.execute(plan);
+      requestsUsed += outcome.requestCount;
 
       if (this.cancelled) break;
     }
@@ -329,8 +343,18 @@ function rankWorks(
   return results;
 }
 
-function countNewlyExplored(before: { explored: boolean }[], after: { explored: boolean }[]): number {
-  const beforeExplored = before.filter((n) => n.explored).length;
-  const afterExplored = after.filter((n) => n.explored).length;
-  return Math.max(0, afterExplored - beforeExplored);
+/** Count nodes that gained/changed exploredAt during seed ensure (≈ HTTP fetches). */
+function countSeedFetches(
+  before: { id: number; exploredAt: number | null }[],
+  after: { id: number; exploredAt: number | null }[],
+): number {
+  const beforeMap = new Map(before.map((n) => [n.id, n.exploredAt]));
+  let count = 0;
+  for (const node of after) {
+    const prev = beforeMap.get(node.id);
+    if (node.exploredAt != null && prev !== node.exploredAt) {
+      count += 1;
+    }
+  }
+  return count;
 }
