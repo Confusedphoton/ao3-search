@@ -66,9 +66,15 @@ npm install
 
 **Firefox:** Run `npm run dev:firefox`, then open `about:debugging#/runtime/this-firefox` and load temporary add-on from `.output/firefox-mv3/manifest.json`.
 
+## Installation
+
+**Firefox:** Install from [Mozilla Add-ons](https://addons.mozilla.org/en-US/firefox/addon/ao3-search-plus/).
+
+For local development builds, see [Loading the extension locally](#loading-the-extension-locally).
+
 ## Usage
 
-1. Install or load the extension and browse AO3 normally — visited work, tag, and author pages are added to your local graph.
+1. Install the extension (see [Installation](#installation)) and browse AO3 normally — visited work, tag, and author pages are added to your local graph.
 2. Open the extension popup:
    - Add **positive seeds** (works/tags/authors you want more of).
    - Optionally add **negative seeds** to steer results away from specific nodes.

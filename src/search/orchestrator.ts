@@ -22,7 +22,6 @@ import { loadGraphSnapshot } from '../storage/db';
 import { RequestHandler } from '../scheduler/requestHandler';
 import {
   createExpansionPolicy,
-  DefaultExpansionPolicy,
   selectNextPlan,
   type ExpansionPolicy,
 } from './expansionPolicy';
@@ -45,7 +44,7 @@ export class SearchOrchestrator {
     policy?: ExpansionPolicy,
   ) {
     this.handler = handler;
-    this.policy = policy ?? new DefaultExpansionPolicy();
+    this.policy = policy ?? createExpansionPolicy('topological');
     this.policyOverride = policy !== undefined;
   }
 

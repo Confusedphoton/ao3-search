@@ -62,7 +62,7 @@ export const DEFAULT_SETTINGS: TunableSettings = {
   maxNegativeSeeds: MAX_NEGATIVE_SEEDS,
   negativeRelevanceLambda: NEGATIVE_RELEVANCE_LAMBDA,
   theme: 'system',
-  expansionPolicy: 'expected-info',
+  expansionPolicy: 'topological',
   permeability: defaultPermeabilityFilters(),
 };
 
@@ -103,7 +103,7 @@ function normalizeTheme(value: unknown): ThemePreference {
 }
 
 function normalizeExpansionPolicy(value: unknown): ExpansionPolicyKind {
-  return value === 'topological' ? 'topological' : 'expected-info';
+  return value === 'expected-info' ? 'expected-info' : 'topological';
 }
 
 function normalizeFilterValues(
