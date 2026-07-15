@@ -1,4 +1,5 @@
 import type { GraphNode } from './types';
+import { NodeKind } from './types';
 import { isFullyExplored } from './exploration';
 
 export function hubFrequency(node: GraphNode): number {
@@ -12,11 +13,14 @@ export function outgoingOrder(node: GraphNode): number {
 
 /**
  * Fraction of a node's outgoing mass that flows through observed edges.
- * Fully explored nodes are treated as fully observed; incomplete / partial
- * hubs leak proportionally to observed degree vs estimated order.
+ * Fully explored nodes are treated as fully observed. Incomplete works retain
+ * one edge of uncertainty; hubs use their estimated outgoing order.
  */
 export function rowOutFraction(node: GraphNode, observedOutDegree: number): number {
   if (observedOutDegree <= 0) return 0;
   if (isFullyExplored(node)) return 1;
+  if (node.kind === NodeKind.Work) {
+    return observedOutDegree / (observedOutDegree + 1);
+  }
   return Math.min(1, observedOutDegree / outgoingOrder(node));
 }

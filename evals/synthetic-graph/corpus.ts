@@ -34,7 +34,7 @@ export const DEFAULT_CORPUS_CONFIG: CorpusConfig = {
 };
 
 /**
- * Named corpus sizes for the expanding-subgraph eval.
+ * Named corpus sizes for the fog-of-war search eval.
  * Approximate work counts: small ~260, medium ~1.2k, large ~4k, xlarge ~12k, xxlarge ~35k.
  */
 export const CORPUS_SIZE_PRESETS = {
@@ -125,7 +125,7 @@ function wordCountFor(rng: () => number): number {
 
 /**
  * Build a closed, fully-explored synthetic AO3-like graph with community structure.
- * Tag/author frequencies equal true degrees so open depth-balls leak mass at the frontier.
+ * Tag/author frequencies equal true degrees so fog-of-war frontiers leak mass correctly.
  */
 export function buildEvalCorpus(config: Partial<CorpusConfig> = {}): EvalCorpus {
   const cfg: CorpusConfig = { ...DEFAULT_CORPUS_CONFIG, ...config };

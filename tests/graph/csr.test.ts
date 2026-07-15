@@ -44,6 +44,7 @@ describe('buildCSR', () => {
 
     const csr = buildCSR(snapshot);
     const workIndex = csr.nodeByIndex.findIndex((n) => n.key === '100');
+    const incompleteWorkIndex = csr.nodeByIndex.findIndex((n) => n.key === '200');
     const rareIndex = csr.nodeByIndex.findIndex((n) => n.key === 'rare');
     const popularIndex = csr.nodeByIndex.findIndex((n) => n.key === 'popular');
 
@@ -58,6 +59,7 @@ describe('buildCSR', () => {
 
     expect(rareWeight).toBeGreaterThan(popularWeight);
     expect(csr.rowOutFractions[workIndex]).toBe(1);
+    expect(csr.rowOutFractions[incompleteWorkIndex]).toBe(0.5);
     expect(csr.rowOutFractions[popularIndex]).toBeCloseTo(1 / 5000, 6);
     expect(csr.rowOutFractions[rareIndex]).toBe(
       rowOutFraction(csr.nodeByIndex[rareIndex], csr.offsets[rareIndex + 1] - csr.offsets[rareIndex]),

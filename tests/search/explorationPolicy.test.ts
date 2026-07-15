@@ -5,7 +5,7 @@ import { EXPLORATION_STALE_MS } from '@/src/config/constants';
 import { worksSearchUrl } from '@/src/ao3/workSearch';
 import { parseListingPagination } from '@/src/ao3/parsePagination';
 import { parseTagPageFromHtml } from '@/src/ao3/parseTag';
-import { DefaultExpansionPolicy } from '@/src/search/expansionPolicy';
+import { DefaultExpansionPolicy, selectNextPlan } from '@/src/search/expansionPolicy';
 import { buildCSR } from '@/src/graph/csr';
 import { normalizeExplorationFields } from '@/src/graph/exploration';
 
@@ -167,13 +167,13 @@ describe('DefaultExpansionPolicy', () => {
       authorEdges: [],
     });
     const policy = new DefaultExpansionPolicy();
-    const plan = policy.selectNext({
+    const frontier = policy.buildFrontier({
       csr,
       relevance: new Float64Array([1]),
       authority: new Float64Array([1]),
       precision: new Float64Array([1]),
     });
-    expect(plan).toEqual({
+    expect(selectNextPlan(csr, frontier)).toEqual({
       type: 'tagListing',
       tagName: 'fluff',
       page: 2,
@@ -200,18 +200,22 @@ describe('DefaultExpansionPolicy', () => {
       authorEdges: [],
     });
     const policy = new DefaultExpansionPolicy();
-    const plan = policy.selectNext({
+    const frontier = policy.buildFrontier({
       csr,
       relevance: new Float64Array([1]),
       authority: new Float64Array([1]),
       precision: new Float64Array([1]),
     });
-    expect(plan).toEqual({
+    expect(selectNextPlan(csr, frontier)).toEqual({
       type: 'tagListing',
       tagName: 'fluff',
       page: 1,
       marksNodeId: 1,
     });
+  });
+
+  it('selectNextPlan returns null only for an empty frontier', () => {
+    expect(selectNextPlan(buildCSR({ nodes: [], edges: [], authorEdges: [] }), [])).toBeNull();
   });
 });
 

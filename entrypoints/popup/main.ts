@@ -166,7 +166,7 @@ function render(): void {
   app.innerHTML = `
     <header>
       <h1>AO3 Semantic Search</h1>
-      <p class="subtitle">Graph-based discovery via Personalized PageRank</p>
+      <p class="subtitle">Graph-based discovery via query propagation</p>
     </header>
 
     <section>

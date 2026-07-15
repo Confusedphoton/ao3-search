@@ -48,33 +48,27 @@ export function buildConductanceField(
 }
 
 /**
- * Discrete superlevel thresholds: at most `maxLevels` values sampled uniformly
- * across the positive φ range, always including max φ.
+ * Discrete superlevel thresholds sampled from positive φ critical values.
  */
 export function thresholdSchedule(
   phi: Float64Array,
   maxLevels: number = TOPOLOGY_MAX_LEVELS,
 ): number[] {
-  let maxPhi = 0;
-  let minPositive = Infinity;
+  const uniquePositive = new Set<number>();
   for (let i = 0; i < phi.length; i++) {
     const value = phi[i]!;
-    if (value > maxPhi) maxPhi = value;
-    if (value > 0 && value < minPositive) minPositive = value;
+    if (value > 0 && Number.isFinite(value)) uniquePositive.add(value);
   }
-  if (maxPhi <= 0 || !Number.isFinite(maxPhi)) return [];
-  if (!Number.isFinite(minPositive) || minPositive >= maxPhi) {
-    return [maxPhi];
-  }
+  const criticalValues = [...uniquePositive].sort((a, b) => b - a);
+  if (criticalValues.length === 0) return [];
 
-  const levels = Math.max(1, Math.min(maxLevels, phi.length));
-  if (levels === 1) return [maxPhi];
+  const levels = Math.max(1, Math.min(maxLevels, criticalValues.length));
+  if (levels === 1) return [criticalValues[0]!];
 
   const out: number[] = [];
   for (let i = 0; i < levels; i++) {
-    const t = i / (levels - 1);
-    // High → low so filtration grows as λ decreases.
-    out.push(maxPhi - t * (maxPhi - minPositive));
+    const index = Math.round((i * (criticalValues.length - 1)) / (levels - 1));
+    out.push(criticalValues[index]!);
   }
   return out;
 }

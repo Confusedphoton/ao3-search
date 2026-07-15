@@ -9,14 +9,14 @@ This is a working MVP browser extension (WXT, Chrome/Firefox MV3) that implement
 ### Browser extension shell
 
 - **Background service worker** (`entrypoints/background.ts`): seed state, message routing, search lifecycle, graph ingestion, graph import/export, stats-import coordination.
-- **Content script** (`entrypoints/content/ao3.content.ts`): scrapes work/tag/author pages the user visits and sends them to the background; adds on-page “Add as seed” / “Avoid” buttons for all three node types.
+- **Content script** (`entrypoints/ao3.content.ts`): scrapes work/tag/author pages the user visits and sends them to the background; adds on-page “Add as seed” / “Avoid” buttons for all three node types.
 - **Popup UI** (`entrypoints/popup/main.ts`): manage positive and negative seeds (works, tags, authors), tag autocomplete from the local graph, start/cancel search, view progress and results, export/import graph JSON.
 - **Options page** (`entrypoints/options/main.ts`): import AO3 official stats dump (`tags-YYYYMMDD.csv`) to calibrate tag frequencies and apply canonical tag merges.
 - **Dark mode** (`src/ui/theme.css`): shared theme used by popup and options.
 
 ### Graph model & storage (Layer 1)
 
-- Work, tag, and author nodes with interned integer IDs in IndexedDB (`src/storage/db.ts`, schema version 5).
+- Work, tag, and author nodes with interned integer IDs in IndexedDB (`src/storage/db.ts`, schema version 6).
 - Work ↔ tag and author ↔ work edges stored persistently; graph grows only through fetched or passively scraped pages (no bulk crawl).
 - Explored vs unexplored node tracking drives the expansion frontier.
 - **Graph import/export** (`src/storage/graphIo.ts`): JSON snapshot with merge or overwrite modes.
@@ -38,7 +38,7 @@ The old `src/ppr/` module has been removed. Ranking and frontier scoring now liv
 - **Query pipeline** (`src/propagation/runQueryPropagation.ts`):
   1. Build non-uniform priors (work word count, author aggregation, tag fallback).
   2. Run **authority** propagation (global PageRank with prior teleport).
-  3. Run **relevance** propagation (seed-weighted teleport, authority-weighted receivers, signed edges for negatives).
+  3. Run **relevance** propagation twice on the unsigned graph (positive seeds and negative seeds), then form the ranking score with dual-PPR contrast `r⁺ − λ r⁻`.
   4. Compute **tag flux** priors from the relevance vector and refine authority.
   5. Compute **precision** (prior + one authority-weighted spread) and **expected information** `relevance × authority / (precision + ε)`.
 - Runs in a dedicated Web Worker (`src/propagation/propagation.worker.ts` via `src/compute/host.ts`).
@@ -65,13 +65,14 @@ The old `src/ppr/` module has been removed. Ranking and frontier scoring now liv
 
 - Positive seeds: works, tags, or authors (popup, content script, tag autocomplete).
 - Negative seeds: works, tags, or authors.
-- Signed adjacency at query time (`src/graph/signedQuery.ts`): edges touching negative seeds are negated; teleport vector includes negative sinks.
+- Dual Personalized PageRank contrast (`src/propagation/signals/relevance.ts`): positive and negative relevance are run separately on the unsigned graph; the ranking score is `r⁺ − λ r⁻` with tunable λ (`NEGATIVE_RELEVANCE_LAMBDA` / settings).
+- A signed-edge path (`src/graph/signedQuery.ts`) still exists but is **not** used by the live query pipeline (`runQueryPropagation` always builds an unsigned graph).
 - Supports queries like “Time Travel without Major Character Death” in principle.
 
 ### AO3 parsing & tests
 
 - Parsers for work, tag, and author pages (`src/ao3/`); stats dump CSV streaming (`src/ao3/statsDump.ts`, `streamTextFile.ts`).
-- **57 tests across 19 files** (Vitest): propagation (engine, signals, priors, tag flux, precision, query pipeline), CSR, frontier, signed queries, parsers, stats import, tag canonicalization, graph I/O.
+- **130 tests across 28 files** (Vitest): propagation (engine, signals, priors, tag flux, precision, query pipeline), CSR, frontier, topology, signed queries, parsers, stats import, tag canonicalization, graph I/O, settings.
 
 ---
 
@@ -79,25 +80,26 @@ The old `src/ppr/` module has been removed. Ranking and frontier scoring now liv
 
 | Design concept | Current state |
 |---|---|
-| Personalized PageRank as the sole ranking signal | **Superseded.** Relevance is still query PPR, but authority and precision are separate signals; frontier uses expected information, not raw PPR authority. UI copy still says “Personalized PageRank” in places. |
+| Personalized PageRank as the sole ranking signal | **Superseded.** Relevance is still query PPR (with dual-PPR negatives), but authority and precision are separate signals; frontier uses expected information or topological fragility. |
 | Author nodes | **Fully implemented** (seeds, negatives, edges, expansion, priors). Design doc “Future V2” section is stale. |
 | Cold-start local co-occurrence prior | Implicit only: shared seed tags raise `estimatedFreq`, affecting hub weights. No explicit seed-co-occurrence weighting on the teleport vector or dedicated cold-start phase beyond fetching seeds. |
-| 3–5 seed works | Popup allows 1–5 seeds (`MIN_SEEDS = 1`); design recommends 3–5. Tag and author seeds reduce the need for multiple work seeds but the minimum is still 1. |
+| 3–5 seed works | Default max is 20 seeds (`MAX_SEEDS`); settings allow up to 100. Popup minimum remains 1 (`MIN_SEEDS`). Design recommends 3–5 work seeds. |
 | Layer 3 — Query Graph | Partial: `runQueryPropagation` is a coherent query-layer pipeline and returns relevance/authority/precision/expectedInfo vectors, but there is no persistent query-graph object or cached propagation state between iterations—each loop rebuilds CSR and reruns the full pipeline. |
-| Exploration strategy (beam search) | ε-greedy only. No maintained top-K frontier beam; selection is from the full unexplored set sorted by expected information. |
-| Information gain for expansion | **Partially implemented.** Expected-information scoring (`relevance × authority / precision`) guides frontier ranking, matching the design’s formula. Post-expansion branch evaluation (score change, newly promoted nodes, authority redistribution) is not implemented. |
-| Stopping conditions | Three of four: budget, frontier expected-info threshold, empty frontier. Missing: relevance-distribution convergence check across expansion iterations. (Per-signal propagation still converges internally via tolerance.) |
+| Exploration strategy (beam search) | ε-greedy only (expected-info policy). Topological policy ranks by fragility acquisition. No maintained top-K frontier beam. |
+| Information gain for expansion | **Partially implemented.** Expected-information scoring (`relevance × authority / precision`) guides the default frontier. Post-expansion branch evaluation (score change, newly promoted nodes, authority redistribution) is not implemented. |
+| Stopping conditions | Budget, frontier acquisition threshold, empty frontier, and (topological) trivial-Hasse stability. Missing: relevance-distribution convergence check across expansion iterations. (Per-signal propagation still converges internally via tolerance.) |
 | Offscreen document | Not used. Propagation worker is spawned directly from the service worker. |
 | Passive browsing enrichment | Works when idle, but disabled during an active search (`ingestPageData` returns early if searching). |
 | Maximize info per request | Tag/author listing pagination is implemented; hubs stay `partial` until exhausted. Stale complete hubs can be demoted when AO3 work counts grow. `/works/search` is available on the request handler but unused by the default expansion policy. |
 | Synonym discovery | Emergent in the algorithm (similar tags share authority) plus explicit tag merges via stats dump. No UI or analytics for surfacing synonym clusters. |
 | Global rarity × local enrichment | Only basic `calibratedFreq ?? estimatedFreq` weighting; no combined rarity×enrichment experiments. |
+| Signed-edge negatives | Implemented in `signedQuery.ts` and optional in `buildPropagationGraph`, but the live pipeline uses dual-PPR contrast only. |
 
 ---
 
 ## Not implemented (design doc only)
 
-These appear in `docs/design.md` but have no corresponding code:
+These appear in `docs/design.md` but have no corresponding code (or are orphaned):
 
 1. Bookmark graph (reader → work connections).
 2. Offscreen document as the compute coordinator (architecture: background → Web Worker).
@@ -107,6 +109,7 @@ These appear in `docs/design.md` but have no corresponding code:
 6. Global rarity × local enrichment weighting experiments.
 7. Explicit query-graph lifecycle with cached propagation state between iterations.
 8. Synonym/tag-equivalence UI or analytics layer.
+9. Live use of signed-edge negatives (code exists; dual-PPR contrast is what runs).
 
 ---
 

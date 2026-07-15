@@ -19,34 +19,51 @@ export interface ExpansionPolicyContext {
   precision: Float64Array;
   /** Open-subgraph row fractions; defaults to `csr.rowOutFractions`. */
   rowOutFractions?: Float64Array;
-  exploratory?: boolean;
   now?: number;
 }
 
+/**
+ * Ranks expandable nodes. Does not decide whether to expand — owners
+ * (orchestrator, eval loop) apply budget / score / stability stops.
+ *
+ * `buildFrontier` must include every expandable node and may only be empty
+ * when the graph is fully explored.
+ */
 export interface ExpansionPolicy {
-  /** Early-stop threshold for `maxAcquisitionScore`. */
+  /** Owner early-stop threshold for `maxAcquisitionScore` (not used by the policy itself). */
   readonly minAcquisitionScore: number;
   buildFrontier(ctx: ExpansionPolicyContext): FrontierNode[];
-  selectNext(ctx: ExpansionPolicyContext): FetchPlan | null;
   maxExpectedInfo(frontier: FrontierNode[]): number;
   maxAcquisitionScore(frontier: FrontierNode[]): number;
   /** Present on topological policy after `buildFrontier`. */
   topologySnapshot?(): TopologyInvariants | null;
 }
 
-/** ε-greedy expected-info policy with pagination + stale complete rechecks. */
+/**
+ * Best fetch plan for a scored frontier.
+ * Returns null only when `frontier` is empty (fully explored).
+ */
+export function selectNextPlan(
+  csr: CSRGraph,
+  frontier: FrontierNode[],
+  options: { exploratory?: boolean } = {},
+): FetchPlan | null {
+  if (frontier.length === 0) return null;
+  const picked = pickNextFrontier(frontier, options);
+  if (!picked) return null;
+  const plan = planForNode(csr, picked.index);
+  if (!plan) {
+    throw new Error(`No fetch plan for expandable node index ${picked.index}`);
+  }
+  return plan;
+}
+
+/** ε-greedy expected-info ranking with pagination + stale complete rechecks. */
 export class DefaultExpansionPolicy implements ExpansionPolicy {
   readonly minAcquisitionScore = MIN_FRONTIER_EXPECTED_INFO;
 
   buildFrontier(ctx: ExpansionPolicyContext): FrontierNode[] {
     return buildFrontier(ctx.csr, ctx.relevance, ctx.authority, ctx.precision, ctx.now);
-  }
-
-  selectNext(ctx: ExpansionPolicyContext): FetchPlan | null {
-    const frontier = this.buildFrontier(ctx);
-    const picked = pickNextFrontier(frontier, { exploratory: ctx.exploratory });
-    if (!picked) return null;
-    return planForNode(ctx.csr, picked.index);
   }
 
   maxExpectedInfo(frontier: FrontierNode[]): number {

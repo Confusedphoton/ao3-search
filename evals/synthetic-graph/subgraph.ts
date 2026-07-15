@@ -3,6 +3,9 @@ import { normalizeExplorationFields } from '@/src/graph/exploration';
 import { NodeKind, type AuthorWorkEdge, type GraphEdge, type GraphNode } from '@/src/graph/types';
 import { SyntheticGraph } from '../../tests/fixtures/syntheticGraph';
 
+/** Shared with fog-of-war policy `now` so complete hubs are not stale-rechecked. */
+export const FOG_MATERIALIZE_EXPLORED_AT = 1_000_000;
+
 /**
  * Undirected BFS distances from a seed index on the CSR adjacency.
  * Unreachable nodes are omitted from the returned map.
@@ -37,31 +40,21 @@ function authorNeighborSet(csr: CSRGraph): Set<string> {
 }
 
 /**
- * Induced open depth-ball around a seed.
- *
- * Nodes with distance < depth are marked explored (closed rows).
- * Nodes on the boundary (distance === depth) stay unexplored so
+ * Induced subgraph on visible parent indices.
+ * Explored nodes are closed; other visible nodes stay unexplored so
  * `rowOutFraction` leaks according to full-graph hub frequency.
  */
-export function extractDepthBall(
+export function induceVisibleSubgraph(
   parent: SyntheticGraph,
-  seedIndex: number,
-  depth: number,
-): { graph: SyntheticGraph; includedIndices: number[]; distances: Map<number, number> } {
+  visibleIndices: Iterable<number>,
+  exploredIndices: ReadonlySet<number>,
+): SyntheticGraph {
   const csr = parent.csr;
   if (!csr) {
-    throw new Error('extractDepthBall requires a semantic synthetic graph');
-  }
-  if (depth < 0) {
-    throw new Error('depth must be non-negative');
+    throw new Error('induceVisibleSubgraph requires a semantic synthetic graph');
   }
 
-  const distances = bfsDistances(csr, seedIndex);
-  const included = [...distances.entries()]
-    .filter(([, dist]) => dist <= depth)
-    .map(([index]) => index)
-    .sort((a, b) => a - b);
-
+  const included = [...new Set(visibleIndices)].sort((a, b) => a - b);
   const includedSet = new Set(included);
   const authorPairs = authorNeighborSet(csr);
 
@@ -71,8 +64,7 @@ export function extractDepthBall(
 
   for (const oldIndex of included) {
     const source = csr.nodeByIndex[oldIndex];
-    const dist = distances.get(oldIndex)!;
-    const explored = dist < depth || depth === 0;
+    const explored = exploredIndices.has(oldIndex);
     const id = nextId++;
     oldToNewId.set(oldIndex, id);
     nodes.push(
@@ -81,7 +73,8 @@ export function extractDepthBall(
         id,
         explorationStatus: explored ? 'complete' : 'unexplored',
         explored,
-        exploredAt: explored ? (source.exploredAt ?? 1) : null,
+        // Use a recent timestamp so stale-hub rechecks do not fire in evals.
+        exploredAt: explored ? FOG_MATERIALIZE_EXPLORED_AT : null,
         listingNextPage: null,
         listingPagesFetched: explored ? Math.max(source.listingPagesFetched ?? 1, 1) : 0,
       }),
@@ -114,9 +107,44 @@ export function extractDepthBall(
     }
   }
 
-  const subgraphCsr = buildCSR({ nodes, edges, authorEdges });
+  return SyntheticGraph.fromCsr(buildCSR({ nodes, edges, authorEdges }));
+}
+
+/**
+ * Induced open depth-ball around a seed (hop radius).
+ *
+ * Nodes with distance < depth are marked explored (closed rows).
+ * Nodes on the boundary (distance === depth) stay unexplored so
+ * `rowOutFraction` leaks according to full-graph hub frequency.
+ */
+export function extractDepthBall(
+  parent: SyntheticGraph,
+  seedIndex: number,
+  depth: number,
+): { graph: SyntheticGraph; includedIndices: number[]; distances: Map<number, number> } {
+  const csr = parent.csr;
+  if (!csr) {
+    throw new Error('extractDepthBall requires a semantic synthetic graph');
+  }
+  if (depth < 0) {
+    throw new Error('depth must be non-negative');
+  }
+
+  const distances = bfsDistances(csr, seedIndex);
+  const included = [...distances.entries()]
+    .filter(([, dist]) => dist <= depth)
+    .map(([index]) => index)
+    .sort((a, b) => a - b);
+
+  const explored = new Set(
+    included.filter((index) => {
+      const dist = distances.get(index)!;
+      return dist < depth || depth === 0;
+    }),
+  );
+
   return {
-    graph: SyntheticGraph.fromCsr(subgraphCsr),
+    graph: induceVisibleSubgraph(parent, included, explored),
     includedIndices: included,
     distances,
   };

@@ -1,15 +1,7 @@
-import { MIN_FRONTIER_FRAGILITY } from '../../config/constants';
+import { MIN_FRONTIER_FRAGILITY, PRECISION_EPS } from '../../config/constants';
 import { isExpandable } from '../../graph/exploration';
-import type { FetchPlan } from '../../scheduler/types';
-import {
-  pickNextFrontier,
-  type FrontierNode,
-} from '../frontier';
-import {
-  planForNode,
-  type ExpansionPolicy,
-  type ExpansionPolicyContext,
-} from '../expansionPolicy';
+import type { FrontierNode } from '../frontier';
+import type { ExpansionPolicy, ExpansionPolicyContext } from '../expansionPolicy';
 import { extractNeighborhoods } from './neighborhoods';
 import { buildHypothesisPoset } from './poset';
 import {
@@ -26,15 +18,13 @@ export interface TopologicalPolicyState {
 }
 
 /**
- * Expansion policy that selects nodes by topological fragility
- * (boundary exposure × potential influence), using the hypothesis
- * refinement poset built from conductance superlevel neighborhoods.
+ * Ranks expandable nodes by topological fragility
+ * (boundary exposure × potential influence). Stopping is owned by the caller.
  */
 export class TopologicalExpansionPolicy implements ExpansionPolicy {
   readonly minAcquisitionScore = MIN_FRONTIER_FRAGILITY;
 
   private lastState: TopologicalPolicyState | null = null;
-  private cachedFrontier: FrontierNode[] | null = null;
 
   buildFrontier(ctx: ExpansionPolicyContext): FrontierNode[] {
     const rowOut = ctx.rowOutFractions ?? ctx.csr.rowOutFractions;
@@ -68,33 +58,27 @@ export class TopologicalExpansionPolicy implements ExpansionPolicy {
       const auth = ctx.authority[index] ?? 0;
       const prec = ctx.precision[index] ?? 0;
       const score = fragility[index] ?? 0;
+      const expectedInfo = (rel * auth) / (prec + PRECISION_EPS);
       frontier.push({
         nodeId: node.id,
         index,
         relevance: rel,
         authority: auth,
         precision: prec,
-        expectedInfo: score,
+        expectedInfo,
         score,
       });
     }
-    const sorted = frontier.sort(
-      (a, b) => (b.score ?? b.expectedInfo) - (a.score ?? a.expectedInfo),
-    );
-    this.cachedFrontier = sorted;
-    return sorted;
-  }
-
-  selectNext(ctx: ExpansionPolicyContext): FetchPlan | null {
-    const frontier = this.cachedFrontier ?? this.buildFrontier(ctx);
-    this.cachedFrontier = null;
-    const picked = pickNextFrontier(frontier, { exploratory: ctx.exploratory });
-    if (!picked) return null;
-    return planForNode(ctx.csr, picked.index);
+    return frontier.sort((a, b) => {
+      const scoreDelta = (b.score ?? 0) - (a.score ?? 0);
+      return scoreDelta !== 0 ? scoreDelta : b.expectedInfo - a.expectedInfo;
+    });
   }
 
   maxExpectedInfo(frontier: FrontierNode[]): number {
-    return this.maxAcquisitionScore(frontier);
+    let max = 0;
+    for (const node of frontier) max = Math.max(max, node.expectedInfo);
+    return max;
   }
 
   maxAcquisitionScore(frontier: FrontierNode[]): number {

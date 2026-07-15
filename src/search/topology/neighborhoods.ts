@@ -148,18 +148,16 @@ export function extractNeighborhoods(
     const candidates: Array<{ w: number; score: number }> = [];
 
     for (const u of h.nodes) {
-      const rhoU = rowOut[u] ?? 1;
       const begin = csr.offsets[u]!;
       const end = csr.offsets[u + 1]!;
       for (let e = begin; e < end; e++) {
         const w = csr.neighbors[e]!;
         if (member.has(w)) continue;
         const rhoW = rowOut[w] ?? 1;
-        // Prefer attachments across open boundary.
-        const openness = 1 - Math.min(rhoU, rhoW);
-        if (openness <= 0 && rhoW >= 1 && rhoU >= 1) continue;
+        const openness = Math.max(0, 1 - rhoW);
+        if (openness <= 0) continue;
         const c = field.edgeConductance[e] ?? 0;
-        const score = (openness + 1e-6) * c * (field.phi[w] ?? 0);
+        const score = openness * c * (field.phi[w] ?? 0);
         candidates.push({ w, score });
       }
     }
@@ -202,39 +200,26 @@ export function extractNeighborhoods(
   return { field, hypotheses, thresholds };
 }
 
-/** Nodes on the frontier of any maximal hypothesis. */
+/** Combinatorial frontier of proper hypotheses (skip the full-vertex superlevel set). */
 export function hypothesisBoundaryNodes(
   csr: CSRGraph,
   hypotheses: Hypothesis[],
 ): Set<number> {
   if (hypotheses.length === 0) return new Set();
 
-  const containedInLarger = new Set<number>();
-  for (let i = 0; i < hypotheses.length; i++) {
-    for (let j = 0; j < hypotheses.length; j++) {
-      if (i === j) continue;
-      if (isStrictSubset(hypotheses[i]!.nodes, hypotheses[j]!.nodes)) {
-        containedInLarger.add(hypotheses[i]!.id);
-        break;
-      }
-    }
-  }
-
   const boundary = new Set<number>();
   for (const h of hypotheses) {
-    if (containedInLarger.has(h.id)) continue;
+    if (h.nodes.length >= csr.nodeCount) continue;
     const member = new Set(h.nodes);
     for (const u of h.nodes) {
       const begin = csr.offsets[u]!;
       const end = csr.offsets[u + 1]!;
-      let onBoundary = false;
       for (let e = begin; e < end; e++) {
         if (!member.has(csr.neighbors[e]!)) {
-          onBoundary = true;
+          boundary.add(u);
           break;
         }
       }
-      if (onBoundary) boundary.add(u);
     }
   }
   return boundary;

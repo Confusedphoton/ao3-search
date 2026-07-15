@@ -8,7 +8,7 @@ The primary design constraint is **minimizing requests to AO3**, not minimizing 
 
 > **AO3 usage disclaimer:** This extension is designed to make as few requests to AO3 as possible. It is **not** a full web crawler and is not intended to scrape AO3 at scale. Search is deliberately sparse: it expands the graph one page at a time, targeting high-value nodes the way a human might browse, rather than bulk-fetching content. I make **no promises** about AO3’s position on whether they consider this a scraper or whether use of this extension complies with their Terms of Service. Use at your own discretion.
 
-> **AI disclaimer:** AI tools were used to help write much of this codebase — it is essentially a tech demo, and I am a mathmetician not a front-end web developer. **No machine learning or AI is used** to perform searching, ranking, graph expansion, or any other runtime behavior in the deployed extension.
+> **AI disclaimer:** AI tools were used to help write much of this codebase — it is essentially a tech demo, and I am a mathematician not a front-end web developer. **No machine learning or AI is used** to perform searching, ranking, graph expansion, or any other runtime behavior in the deployed extension.
 
 ## Features
 
@@ -85,20 +85,23 @@ entrypoints/          Extension entry points (background, popup, options, conten
 src/
   ao3/                AO3 page parsers and URL helpers
   compute/            Web Worker host for propagation
+  config/             Constants, settings, AO3 metadata enums
   graph/              CSR graph representation and types
   messaging/          Extension message protocol
   propagation/        Query propagation engine and signals
   scheduler/          Rate-limited AO3 fetch scheduler
-  search/             Search orchestration and frontier selection
+  search/             Search orchestration, frontier, topology policy
   storage/            IndexedDB, graph I/O, stats import, tag canonicalization
   ui/                 Shared theme styles
 tests/                Vitest unit tests
+evals/                Synthetic-graph ranking evals (`npm run eval:synthetic-graph`)
 docs/design.md        Algorithm and system design document
+docs/overall_status.md  Implementation checklist vs design
 ```
 
 ## Status
 
-This project is **still in active development**. It is a working MVP: core search, graph persistence, stats import, and tag canonicalization are implemented, but APIs, behavior, and UI may change. See [overall_status.md](overall_status.md) for a detailed implementation checklist and known gaps.
+This project is **still in active development**. It is a working MVP: core search, graph persistence, stats import, and tag canonicalization are implemented, but APIs, behavior, and UI may change. See [docs/overall_status.md](docs/overall_status.md) for a detailed implementation checklist and known gaps.
 
 ## Roadmap
 
@@ -106,14 +109,18 @@ This is where the project is headed—not a promise of dates or order, but the l
 
 ### Known loose ends
 
-These are gaps between the current MVP and [docs/design.md](docs/design.md); see [overall_status.md](overall_status.md) for the full checklist.
+These are gaps between the current MVP and [docs/design.md](docs/design.md); see [docs/overall_status.md](docs/overall_status.md) for the full checklist.
 
 - **Search loop** — beam search with a maintained top-K frontier; post-expansion branch evaluation (score change, newly promoted nodes, authority redistribution); convergence-based early stopping when relevance stabilizes across iterations.
 - **Exploration** — tag/author listing pagination with `partial`/`complete` status and stale rechecks; `/works/search` is request-handler-ready but unused by the default policy; passive browsing enrichment is skipped while a search is running.
 - **Query layer** — each expansion rebuilds CSR and reruns the full propagation pipeline; no persistent query-graph object or cached propagation state between iterations.
+- **Negative seeds** — live ranking uses dual-PPR contrast (`r⁺ − λ r⁻`); `signedQuery` / signed-edge graph build still exists but is unused. Decide: delete the signed path or re-adopt it; keep docs/tests aligned either way.
 - **Graph extensions** — bookmark graph (reader → work edges) is design-only so far.
-- **Compute routing** — propagation runs in a Web Worker spawned from the service worker; the offscreen-document coordinator from the design doc is not used.
-- **Polish & UX** — UI copy still says “Personalized PageRank” in places; no UI for surfacing synonym/tag-equivalence clusters (merges come from the stats dump only).
+- **Compute routing** — propagation runs in a Web Worker spawned from the service worker; the offscreen-document coordinator from the design doc is not used. Unused worker entry (`runPropagationViaWorker` / signals mode) and deprecated request-handler helpers (`fetchWork` / `expandNode`) should be cleaned up or wired.
+- **Design doc drift** — `docs/design.md` still frames PPR-only search, lists authors as future work, and says canonicalization is avoided. Missing from the spec: topological fragility policy, dual-PPR negatives + λ, stats dump / tag canonicalization, permeability filters, suppress-from-results, selectable expansion policy.
+- **Settings gaps** — `EXPANSION_BUDGET` is hardcoded (default 20) and not exposed in options; other knobs (top results, seeds, λ, policy, permeability) are tunable.
+- **Polish & UX** — no UI for surfacing synonym/tag-equivalence clusters (merges come from the stats dump only); document permeability filters and suppress-from-results as product behavior.
+- **Evals** — `evals/synthetic-graph/` and `npm run eval:synthetic-graph` exist but are not part of the documented workflow.
 - **Weighting experiments** — explicit cold-start co-occurrence priors; global rarity × local enrichment for niche communities.
 
 ### Compute backend (WASM)

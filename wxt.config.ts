@@ -13,7 +13,7 @@ export default defineConfig({
   manifest: {
     name: "AO3 Graph Search",
     description:
-      "Discover new AO3 works through graph-based baysian search.",
+      "Discover new AO3 works through graph-based Bayesian search.",
     permissions: ["storage", "tabs", "scripting"],
     host_permissions: ["https://archiveofourown.org/*"],
     browser_specific_settings: {

@@ -23,6 +23,7 @@ import { RequestHandler } from '../scheduler/requestHandler';
 import {
   createExpansionPolicy,
   DefaultExpansionPolicy,
+  selectNextPlan,
   type ExpansionPolicy,
 } from './expansionPolicy';
 import { buildFrontier } from './frontier';
@@ -117,7 +118,9 @@ export class SearchOrchestrator {
       return { kind: 'author' as const, key: s.authorKey };
     });
     let requestsUsed = options.continueFromRequests;
-    const expansionBudget = requestsUsed + EXPANSION_BUDGET;
+    // Cap displayed/requested expansions; seed cold-start fetches are counted
+    // separately and added to the ceiling after they complete.
+    let expansionBudget = requestsUsed + EXPANSION_BUDGET;
 
     if (!continuing) {
       await onProgress({
@@ -142,6 +145,7 @@ export class SearchOrchestrator {
       }
       const afterSeeds = await loadGraphSnapshot();
       requestsUsed += countSeedFetches(beforeSeeds.nodes, afterSeeds.nodes);
+      expansionBudget = requestsUsed + EXPANSION_BUDGET;
 
       if (this.cancelled) {
         await closeComputeHost();
@@ -212,7 +216,7 @@ export class SearchOrchestrator {
         requestsUsed,
         expansionBudget,
         frontierSize: 0,
-        message: 'Running Personalized PageRank…',
+        message: 'Running query propagation…',
       });
 
       const nodePermeabilities = buildNodePermeabilities(csr.nodeByIndex, permeability);
@@ -237,7 +241,6 @@ export class SearchOrchestrator {
         authority,
         precision,
         rowOutFractions: csr.rowOutFractions,
-        exploratory: forceExpand,
       };
       const frontier = this.policy.buildFrontier(policyCtx);
       const topo = this.policy.topologySnapshot?.() ?? null;
@@ -266,7 +269,7 @@ export class SearchOrchestrator {
       }
       if (!forceExpand && topoStable) break;
 
-      const plan = this.policy.selectNext(policyCtx);
+      const plan = selectNextPlan(csr, frontier, { exploratory: forceExpand });
       if (!plan) break;
 
       const outcome = await this.handler.execute(plan);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildCSR } from '@/src/graph/csr';
+import { isExpandable } from '@/src/graph/exploration';
 import { NodeKind, type GraphSnapshot } from '@/src/graph/types';
 import {
   buildConductanceField,
@@ -8,6 +9,7 @@ import {
 } from '@/src/search/topology/conductance';
 import {
   extractNeighborhoods,
+  hypothesisBoundaryNodes,
   isStrictSubset,
   superlevelComponents,
 } from '@/src/search/topology/neighborhoods';
@@ -22,7 +24,7 @@ import {
   computeFragilityAll,
 } from '@/src/search/topology/fragility';
 import { TopologicalExpansionPolicy } from '@/src/search/topology/TopologicalExpansionPolicy';
-import { createExpansionPolicy } from '@/src/search/expansionPolicy';
+import { createExpansionPolicy, selectNextPlan } from '@/src/search/expansionPolicy';
 import type { Hypothesis } from '@/src/search/topology/neighborhoods';
 
 function lineSnapshot(): GraphSnapshot {
@@ -111,6 +113,11 @@ describe('conductance field', () => {
     expect(schedule.length).toBe(3);
     expect(schedule[schedule.length - 1]).toBeLessThanOrEqual(schedule[0]!);
   });
+
+  it('samples critical-value quantiles for a skewed potential field', () => {
+    const phi = new Float64Array([1, 0.1, 0.01, 0.001, 0.0001]);
+    expect(thresholdSchedule(phi, 3)).toEqual([1, 0.01, 0.0001]);
+  });
 });
 
 describe('superlevel neighborhoods and poset', () => {
@@ -132,6 +139,43 @@ describe('superlevel neighborhoods and poset', () => {
     const low = superlevelComponents(csr, field, 0.05);
     expect(high.length).toBeGreaterThanOrEqual(1);
     expect(low.some((c) => c.length >= high[0]!.length)).toBe(true);
+  });
+
+  it('uses candidate openness for boundary alternatives', () => {
+    const csr = buildCSR(lineSnapshot());
+    const workIndex = csr.indexByNodeId.get(1)!;
+    const tagIndex = csr.indexByNodeId.get(2)!;
+    const relevance = new Float64Array(csr.nodeCount).fill(1);
+    const authority = new Float64Array(csr.nodeCount).fill(1);
+    relevance[workIndex] = 4;
+    authority[workIndex] = 4;
+    const rowOut = new Float64Array(csr.nodeCount).fill(1);
+    rowOut[workIndex] = 0.2;
+
+    const extraction = extractNeighborhoods(csr, relevance, authority, {
+      maxLevels: 2,
+      rowOutFractions: rowOut,
+    });
+    const closedAttachmentKey = [workIndex, tagIndex].sort((a, b) => a - b).join(',');
+    expect(
+      extraction.hypotheses.some(
+        (hypothesis) =>
+          hypothesis.kind === 'boundary-alt' && hypothesis.key === closedAttachmentKey,
+      ),
+    ).toBe(false);
+
+    rowOut[workIndex] = 1;
+    rowOut[tagIndex] = 0.2;
+    const openCandidateExtraction = extractNeighborhoods(csr, relevance, authority, {
+      maxLevels: 2,
+      rowOutFractions: rowOut,
+    });
+    expect(
+      openCandidateExtraction.hypotheses.some(
+        (hypothesis) =>
+          hypothesis.kind === 'boundary-alt' && hypothesis.key === closedAttachmentKey,
+      ),
+    ).toBe(true);
   });
 
   it('builds covering relations under inclusion', () => {
@@ -178,27 +222,18 @@ describe('fragility proxy', () => {
 
   it('ranks open high-potential boundary nodes above closed interior', () => {
     const csr = buildCSR(lineSnapshot());
-    const rel = new Float64Array(csr.nodeCount);
-    const auth = new Float64Array(csr.nodeCount);
-    for (let i = 0; i < csr.nodeCount; i++) {
-      rel[i] = 1;
-      auth[i] = 1;
-    }
-    const extraction = extractNeighborhoods(csr, rel, auth, {
-      rowOutFractions: (() => {
-        const r = new Float64Array(csr.nodeCount).fill(1);
-        // Leave the unexplored tag open.
-        const tagIndex = csr.indexByNodeId.get(2)!;
-        r[tagIndex] = 0.2;
-        return r;
-      })(),
-    });
+    const workExplored = csr.indexByNodeId.get(1)!;
+    const tagIndex = csr.indexByNodeId.get(2)!;
+    const rel = new Float64Array(csr.nodeCount).fill(1);
+    const auth = new Float64Array(csr.nodeCount).fill(1);
+    rel[workExplored] = 4;
+    auth[workExplored] = 4;
+    const rowOut = new Float64Array(csr.nodeCount).fill(1);
+    rowOut[tagIndex] = 0.2;
+
+    const extraction = extractNeighborhoods(csr, rel, auth, { rowOutFractions: rowOut });
     const poset = buildHypothesisPoset(extraction.hypotheses);
     const topology = computeHasseHomology(poset);
-    const rowOut = new Float64Array(csr.nodeCount).fill(1);
-    const tagIndex = csr.indexByNodeId.get(2)!;
-    const workExplored = csr.indexByNodeId.get(1)!;
-    rowOut[tagIndex] = 0.2;
 
     const fragility = computeFragilityAll({
       csr,
@@ -210,12 +245,37 @@ describe('fragility proxy', () => {
     });
 
     expect(potentialInfluence(extraction.field, tagIndex)).toBeGreaterThan(0);
-    expect(fragility[tagIndex]!).toBeGreaterThanOrEqual(fragility[workExplored]!);
+    expect(fragility[tagIndex]!).toBeGreaterThan(0);
+    expect(fragility[tagIndex]!).toBeGreaterThan(fragility[workExplored]!);
+  });
+
+  it('keeps a non-empty boundary when a full-vertex hypothesis is present', () => {
+    const csr = buildCSR(lineSnapshot());
+    const rel = new Float64Array([4, 2, 1, 1, 0.5]);
+    const auth = new Float64Array([4, 2, 1, 1, 0.5]);
+    const rowOut = new Float64Array(csr.nodeCount).fill(0.5);
+    const extraction = extractNeighborhoods(csr, rel, auth, { rowOutFractions: rowOut });
+    expect(extraction.hypotheses.some((h) => h.nodes.length === csr.nodeCount)).toBe(true);
+
+    const boundary = hypothesisBoundaryNodes(csr, extraction.hypotheses);
+    expect(boundary.size).toBeGreaterThan(0);
+
+    const poset = buildHypothesisPoset(extraction.hypotheses);
+    const topology = computeHasseHomology(poset);
+    const fragility = computeFragilityAll({
+      csr,
+      field: extraction.field,
+      hypotheses: extraction.hypotheses,
+      poset,
+      topology,
+      rowOutFractions: rowOut,
+    });
+    expect([...fragility].some((v) => v > 0)).toBe(true);
   });
 });
 
 describe('TopologicalExpansionPolicy', () => {
-  it('selects the highest-fragility expandable node', () => {
+  it('ranks by fragility and always yields a plan when expandable', () => {
     const csr = buildCSR(lineSnapshot());
     const relevance = new Float64Array(csr.nodeCount).fill(0.5);
     const authority = new Float64Array(csr.nodeCount).fill(0.5);
@@ -227,18 +287,6 @@ describe('TopologicalExpansionPolicy', () => {
     }
 
     const policy = new TopologicalExpansionPolicy();
-    const originalRandom = Math.random;
-    Math.random = () => 0.99; // force greedy
-    const plan = policy.selectNext({
-      csr,
-      relevance,
-      authority,
-      precision,
-      rowOutFractions: rowOut,
-    });
-    Math.random = originalRandom;
-
-    expect(plan).not.toBeNull();
     const frontier = policy.buildFrontier({
       csr,
       relevance,
@@ -248,6 +296,40 @@ describe('TopologicalExpansionPolicy', () => {
     });
     expect(frontier.length).toBeGreaterThan(0);
     expect(frontier[0]!.score).toBeGreaterThanOrEqual(frontier[frontier.length - 1]!.score ?? 0);
+
+    const originalRandom = Math.random;
+    Math.random = () => 0.99; // force greedy
+    const plan = selectNextPlan(csr, frontier);
+    Math.random = originalRandom;
+    expect(plan).not.toBeNull();
+  });
+
+  it('still ranks every expandable node when all fragility scores are zero', () => {
+    const csr = buildCSR(lineSnapshot());
+    const relevance = new Float64Array(csr.nodeCount).fill(0.5);
+    const authority = new Float64Array(csr.nodeCount).fill(0.5);
+    const precision = new Float64Array(csr.nodeCount).fill(1);
+    const preferredIndex = csr.indexByNodeId.get(3)!;
+    relevance[preferredIndex] = 2;
+    authority[preferredIndex] = 3;
+    precision[preferredIndex] = 0.5;
+    // Fully closed rows ⇒ zero boundary exposure / fragility.
+    const rowOut = new Float64Array(csr.nodeCount).fill(1);
+
+    const policy = new TopologicalExpansionPolicy();
+    const frontier = policy.buildFrontier({
+      csr,
+      relevance,
+      authority,
+      precision,
+      rowOutFractions: rowOut,
+    });
+    const expandable = csr.nodeByIndex.filter((n) => isExpandable(n)).length;
+    expect(frontier.length).toBe(expandable);
+    expect(frontier.every((n) => (n.score ?? 0) === 0)).toBe(true);
+    expect(frontier[0]!.index).toBe(preferredIndex);
+    expect(frontier[0]!.expectedInfo).toBeGreaterThan(frontier[1]!.expectedInfo);
+    expect(selectNextPlan(csr, frontier)).not.toBeNull();
   });
 
   it('createExpansionPolicy switches implementations', () => {

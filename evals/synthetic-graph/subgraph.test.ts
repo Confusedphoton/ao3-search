@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildEvalCorpus } from './corpus';
-import { bfsDistances, extractDepthBall } from './subgraph';
+import { bfsDistances, extractDepthBall, induceVisibleSubgraph } from './subgraph';
 
 describe('depth-ball subgraphs', () => {
   it('includes only nodes within the requested hop radius', () => {
@@ -50,8 +50,10 @@ describe('depth-ball subgraphs', () => {
     const csr = graph.csr!;
 
     for (let index = 0; index < csr.nodeCount; index++) {
-      const key = csr.nodeByIndex[index].key;
-      const parentIndex = corpus.graph.index(csr.nodeByIndex[index].kind, key);
+      const parentIndex = corpus.graph.index(
+        csr.nodeByIndex[index].kind,
+        csr.nodeByIndex[index].key,
+      );
       const dist = distances.get(parentIndex)!;
       if (dist < 2) {
         expect(csr.nodeByIndex[index].explored).toBe(true);
@@ -61,5 +63,28 @@ describe('depth-ball subgraphs', () => {
         expect(csr.rowOutFractions[index]).toBeLessThanOrEqual(1);
       }
     }
+  });
+});
+
+describe('induceVisibleSubgraph', () => {
+  it('keeps only the requested nodes and exploration mask', () => {
+    const corpus = buildEvalCorpus({
+      communities: 1,
+      worksPerCommunity: 4,
+      localTagsPerCommunity: 2,
+      bridgeTags: 1,
+      authorsPerCommunity: 1,
+      bridgeWorks: 0,
+      seed: 1,
+    });
+    const seedIndex = corpus.graph.work(corpus.targetSeedKeys[0]);
+    const csr = corpus.graph.csr!;
+    const neighbor = csr.neighbors[csr.offsets[seedIndex]];
+    const visible = [seedIndex, neighbor];
+    const explored = new Set([seedIndex]);
+    const graph = induceVisibleSubgraph(corpus.graph, visible, explored);
+
+    expect(graph.nodeCount).toBe(2);
+    expect(graph.csr!.nodeByIndex[graph.work(corpus.targetSeedKeys[0])].explored).toBe(true);
   });
 });
