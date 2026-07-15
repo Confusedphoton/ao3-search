@@ -129,6 +129,8 @@ h2 {
 }
 
 #import-stats,
+#export-graph,
+#import-graph,
 #save-settings,
 #save-permeability,
 #restore-defaults {
@@ -148,6 +150,8 @@ h2 {
 }
 
 #import-stats:hover:not(:disabled),
+#export-graph:hover:not(:disabled),
+#import-graph:hover:not(:disabled),
 #save-settings:hover:not(:disabled),
 #save-permeability:hover:not(:disabled),
 #restore-defaults:hover:not(:disabled) {
@@ -155,6 +159,8 @@ h2 {
 }
 
 #import-stats:disabled,
+#export-graph:disabled,
+#import-graph:disabled,
 #save-settings:disabled,
 #save-permeability:disabled,
 #restore-defaults:disabled {
@@ -386,4 +392,58 @@ h2 {
 
 .suppressed-list button:hover {
   background: var(--bg-hover);
+}
+
+.subsection-title {
+  margin: 18px 0 8px;
+  font-size: 14px;
+  color: var(--text-heading);
+}
+
+.subsection-title:first-of-type {
+  margin-top: 12px;
+}
+
+.import-prompt {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border-input);
+  border-radius: 6px;
+  background: var(--bg-page);
+}
+
+.import-prompt-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+}
+
+.import-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.import-actions button {
+  padding: 8px 14px;
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  background: var(--bg-surface);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+
+.import-actions button:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.import-actions button.secondary {
+  border-color: var(--border-input);
+  color: var(--text-heading);
+}
+
+button.danger {
+  border-color: var(--accent-danger);
+  color: var(--accent-danger);
 }

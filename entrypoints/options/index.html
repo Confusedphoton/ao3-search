@@ -116,13 +116,30 @@
       </section>
 
       <section>
-        <h2>AO3 stats metadata</h2>
+        <h2>Graph management</h2>
+        <p class="hint">
+          Your accumulated graph (works, tags, authors) and optional AO3 tag metadata for
+          calibration and synonym resolution.
+        </p>
+        <p id="graph-stats" class="status"></p>
+
+        <h3 class="subsection-title">Graph snapshot</h3>
+        <p class="hint">
+          Export or import your graph as JSON. Large files may take a few seconds to load.
+        </p>
+        <div class="button-row">
+          <button id="export-graph" type="button">Export graph</button>
+          <button id="import-graph" type="button">Import graph</button>
+        </div>
+        <input id="import-graph-input" type="file" accept="application/json,.json" hidden />
+        <div id="import-prompt"></div>
+        <p id="graph-io-status" class="status" hidden></p>
+
+        <h3 class="subsection-title">AO3 tag metadata</h3>
         <p class="hint">
           Import the official tags dump (e.g. tags-20210226.csv) to calibrate tag frequencies and
-          resolve synonym merges.
+          resolve synonym merges. The import streams one row at a time to keep memory use low.
         </p>
-        <p class="hint">These are large files and will take a few seconds to load. The import streams one row at a time to keep memory use low.</p>
-        <p id="graph-stats" class="status"></p>
 
         <div class="file-row">
           <label for="stats-tags-file">Tags CSV</label>

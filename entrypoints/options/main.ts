@@ -1,6 +1,6 @@
 import './style.css';
 import { isStatsTagsFileName } from '@/src/ao3/statsDump';
-import type { GraphStats } from '@/src/graph/types';
+import type { GraphExport, GraphStats } from '@/src/graph/types';
 import {
   AO3_ARCHIVE_WARNINGS,
   AO3_CATEGORIES,
@@ -29,12 +29,18 @@ import { applyTheme } from '@/src/ui/theme';
 import { isExtensionMessage, type SuppressedWork } from '@/src/messaging/types';
 import { runStatsImportLocal } from '@/src/storage/statsImportRunner';
 import { sendMessage } from '@/src/messaging/protocol';
+import { parseGraphExport } from '@/src/storage/graphIo';
 
 const tagsInput = document.querySelector<HTMLInputElement>('#stats-tags-file')!;
 const clearCheckbox = document.querySelector<HTMLInputElement>('#stats-clear-existing')!;
 const importButton = document.querySelector<HTMLButtonElement>('#import-stats')!;
 const statusEl = document.querySelector<HTMLParagraphElement>('#stats-status')!;
 const graphStatsEl = document.querySelector<HTMLParagraphElement>('#graph-stats')!;
+const exportGraphButton = document.querySelector<HTMLButtonElement>('#export-graph')!;
+const importGraphButton = document.querySelector<HTMLButtonElement>('#import-graph')!;
+const importGraphInput = document.querySelector<HTMLInputElement>('#import-graph-input')!;
+const importPromptEl = document.querySelector<HTMLDivElement>('#import-prompt')!;
+const graphIoStatusEl = document.querySelector<HTMLParagraphElement>('#graph-io-status')!;
 
 const settingsForm = document.querySelector<HTMLFormElement>('#settings-form')!;
 const topResultsInput = document.querySelector<HTMLInputElement>('#setting-top-results')!;
@@ -63,6 +69,8 @@ let importing = false;
 let suppressedWorks: SuppressedWork[] = [];
 let permeabilityState: PermeabilityFilters = structuredClone(DEFAULT_SETTINGS.permeability);
 let themeState: ThemePreference = DEFAULT_SETTINGS.theme;
+let pendingImport: GraphExport | null = null;
+let pendingImportFileName = '';
 
 const CATEGORY_LABELS: Record<PermeabilityCategoryKey, string> = {
   archiveWarnings: 'Archive warnings',
@@ -88,6 +96,18 @@ function setStatus(message: string, isError = false): void {
   statusEl.hidden = false;
   statusEl.textContent = message;
   statusEl.classList.toggle('error', isError);
+}
+
+function setGraphIoStatus(message: string, isError = false): void {
+  if (!message) {
+    graphIoStatusEl.hidden = true;
+    graphIoStatusEl.textContent = '';
+    graphIoStatusEl.classList.remove('error');
+    return;
+  }
+  graphIoStatusEl.hidden = false;
+  graphIoStatusEl.textContent = message;
+  graphIoStatusEl.classList.toggle('error', isError);
 }
 
 function setSettingsStatus(message: string, isError = false): void {
@@ -247,6 +267,99 @@ async function refreshGraphStats(): Promise<void> {
   const response = await sendMessage({ type: 'GetGraphStats' });
   if (response?.type === 'GraphStats') {
     graphStatsEl.textContent = `Current graph: ${formatGraphStats(response.stats)}`;
+  }
+}
+
+function renderImportPrompt(): void {
+  if (!pendingImport) {
+    importPromptEl.innerHTML = '';
+    return;
+  }
+  importPromptEl.innerHTML = `
+    <div class="import-prompt" role="dialog" aria-labelledby="import-prompt-title">
+      <p id="import-prompt-title" class="import-prompt-title">Import <strong>${escapeHtml(pendingImportFileName)}</strong>?</p>
+      <p class="hint">Choose how to apply this graph file.</p>
+      <div class="import-actions">
+        <button id="import-merge" type="button">Merge</button>
+        <button id="import-overwrite" type="button" class="danger">Replace</button>
+        <button id="import-cancel" type="button" class="secondary">Cancel</button>
+      </div>
+    </div>`;
+
+  importPromptEl.querySelector('#import-merge')?.addEventListener('click', () => {
+    void confirmImport('merge');
+  });
+  importPromptEl.querySelector('#import-overwrite')?.addEventListener('click', () => {
+    void confirmImport('overwrite');
+  });
+  importPromptEl.querySelector('#import-cancel')?.addEventListener('click', () => {
+    pendingImport = null;
+    pendingImportFileName = '';
+    renderImportPrompt();
+  });
+}
+
+async function exportCurrentGraph(): Promise<void> {
+  setGraphIoStatus('');
+  const response = await sendMessage({ type: 'ExportGraph' });
+  if (response?.type === 'GraphExported') {
+    const stamp = new Date().toISOString().slice(0, 10);
+    const blob = new Blob([JSON.stringify(response.export, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `ao3-search-graph-${stamp}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setGraphIoStatus(`Exported ${response.export.nodes.length.toLocaleString()} nodes.`);
+    await refreshGraphStats();
+    return;
+  }
+  if (response?.type === 'GraphImportResult' && !response.success) {
+    setGraphIoStatus(response.message, true);
+  }
+}
+
+async function loadImportFile(file: File): Promise<void> {
+  setGraphIoStatus('');
+  try {
+    const text = await file.text();
+    const parsedJson = JSON.parse(text) as unknown;
+    const exportData = parseGraphExport(parsedJson);
+    if (!exportData) {
+      setGraphIoStatus('Invalid graph file.', true);
+      pendingImport = null;
+      pendingImportFileName = '';
+      renderImportPrompt();
+      return;
+    }
+    pendingImport = exportData;
+    pendingImportFileName = file.name;
+    renderImportPrompt();
+  } catch {
+    setGraphIoStatus('Could not read graph file.', true);
+    pendingImport = null;
+    pendingImportFileName = '';
+    renderImportPrompt();
+  }
+}
+
+async function confirmImport(mode: 'merge' | 'overwrite'): Promise<void> {
+  if (!pendingImport) return;
+  const exportData = pendingImport;
+  pendingImport = null;
+  pendingImportFileName = '';
+  renderImportPrompt();
+  setGraphIoStatus(mode === 'overwrite' ? 'Replacing graph…' : 'Merging graph…');
+
+  const response = await sendMessage({ type: 'ImportGraph', export: exportData, mode });
+  if (response?.type === 'GraphImportResult') {
+    setGraphIoStatus(response.message, !response.success);
+    if (response.stats) {
+      graphStatsEl.textContent = `Current graph: ${formatGraphStats(response.stats)}`;
+    }
   }
 }
 
@@ -508,6 +621,21 @@ tagsInput.addEventListener('change', () => {
 
 importButton.addEventListener('click', () => {
   void importStats();
+});
+
+exportGraphButton.addEventListener('click', () => {
+  void exportCurrentGraph();
+});
+
+importGraphButton.addEventListener('click', () => {
+  importGraphInput.click();
+});
+
+importGraphInput.addEventListener('change', () => {
+  const file = importGraphInput.files?.[0];
+  importGraphInput.value = '';
+  if (!file) return;
+  void loadImportFile(file);
 });
 
 async function importStats(): Promise<void> {
