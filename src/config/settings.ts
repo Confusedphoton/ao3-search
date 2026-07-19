@@ -3,6 +3,7 @@ import {
   MAX_SEEDS,
   MIN_SEEDS,
   NEGATIVE_RELEVANCE_LAMBDA,
+  QUERY_ASTAR_MAX_THINK_MS,
   TOP_RESULTS,
 } from './constants';
 import {
@@ -36,6 +37,8 @@ export interface TunableSettings {
   negativeRelevanceLambda: number;
   theme: ThemePreference;
   expansionPolicy: ExpansionPolicyKind;
+  /** Wall-clock budget for topological query A* per expansion (ms). */
+  queryAStarMaxThinkMs: number;
   permeability: PermeabilityFilters;
 }
 
@@ -63,6 +66,7 @@ export const DEFAULT_SETTINGS: TunableSettings = {
   negativeRelevanceLambda: NEGATIVE_RELEVANCE_LAMBDA,
   theme: 'system',
   expansionPolicy: 'topological',
+  queryAStarMaxThinkMs: QUERY_ASTAR_MAX_THINK_MS,
   permeability: defaultPermeabilityFilters(),
 };
 
@@ -72,6 +76,7 @@ export const SETTINGS_BOUNDS = {
   maxSeeds: { min: MIN_SEEDS, max: 100 },
   maxNegativeSeeds: { min: 1, max: 100 },
   negativeRelevanceLambda: { min: 0, max: 50 },
+  queryAStarMaxThinkMs: { min: 0, max: 60_000 },
   permeability: { min: 0, max: 1 },
 } as const;
 
@@ -190,6 +195,12 @@ export function normalizeSettings(raw: unknown): TunableSettings {
     ),
     theme: normalizeTheme(record.theme),
     expansionPolicy: normalizeExpansionPolicy(record.expansionPolicy),
+    queryAStarMaxThinkMs: clampInt(
+      record.queryAStarMaxThinkMs,
+      SETTINGS_BOUNDS.queryAStarMaxThinkMs.min,
+      SETTINGS_BOUNDS.queryAStarMaxThinkMs.max,
+      DEFAULT_SETTINGS.queryAStarMaxThinkMs,
+    ),
     permeability: normalizePermeabilityFilters(record.permeability),
   };
 }

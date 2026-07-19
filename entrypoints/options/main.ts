@@ -52,6 +52,8 @@ const negativeLambdaInput = document.querySelector<HTMLInputElement>('#setting-n
 const expansionPolicySelect = document.querySelector<HTMLSelectElement>(
   '#setting-expansion-policy',
 )!;
+const aStarThinkRow = document.querySelector<HTMLDivElement>('#astar-think-row')!;
+const aStarMaxThinkInput = document.querySelector<HTMLInputElement>('#setting-astar-max-think')!;
 const restoreDefaultsButton = document.querySelector<HTMLButtonElement>('#restore-defaults')!;
 const settingsStatusEl = document.querySelector<HTMLParagraphElement>('#settings-status')!;
 const suppressedListEl = document.querySelector<HTMLUListElement>('#suppressed-list')!;
@@ -154,6 +156,15 @@ function applyInputBounds(): void {
   maxNegativeSeedsInput.max = String(SETTINGS_BOUNDS.maxNegativeSeeds.max);
   negativeLambdaInput.min = String(SETTINGS_BOUNDS.negativeRelevanceLambda.min);
   negativeLambdaInput.max = String(SETTINGS_BOUNDS.negativeRelevanceLambda.max);
+  aStarMaxThinkInput.min = String(SETTINGS_BOUNDS.queryAStarMaxThinkMs.min / 1000);
+  aStarMaxThinkInput.max = String(SETTINGS_BOUNDS.queryAStarMaxThinkMs.max / 1000);
+}
+
+function updateAStarThinkVisibility(): void {
+  const show = expansionPolicySelect.value === 'topo-query';
+  aStarThinkRow.hidden = !show;
+  aStarMaxThinkInput.required = show;
+  aStarMaxThinkInput.disabled = !show;
 }
 
 function fillSettingsForm(settings: TunableSettings): void {
@@ -162,8 +173,10 @@ function fillSettingsForm(settings: TunableSettings): void {
   maxNegativeSeedsInput.value = String(settings.maxNegativeSeeds);
   negativeLambdaInput.value = String(settings.negativeRelevanceLambda);
   expansionPolicySelect.value = settings.expansionPolicy;
+  aStarMaxThinkInput.value = String(settings.queryAStarMaxThinkMs / 1000);
   permeabilityState = structuredClone(settings.permeability);
   applyThemePreference(settings.theme);
+  updateAStarThinkVisibility();
   renderPermeabilityFilters();
 }
 
@@ -174,6 +187,7 @@ function readSettingsForm(): TunableSettings {
     maxNegativeSeeds: maxNegativeSeedsInput.valueAsNumber,
     negativeRelevanceLambda: negativeLambdaInput.valueAsNumber,
     expansionPolicy: expansionPolicySelect.value as ExpansionPolicyKind,
+    queryAStarMaxThinkMs: aStarMaxThinkInput.valueAsNumber * 1000,
     theme: themeState,
     permeability: permeabilityState,
   });
@@ -569,6 +583,10 @@ settingsForm.addEventListener('submit', (event) => {
   })();
 });
 
+expansionPolicySelect.addEventListener('change', () => {
+  updateAStarThinkVisibility();
+});
+
 savePermeabilityButton.addEventListener('click', () => {
   void (async () => {
     const saved = await saveSettings(readSettingsForm());
@@ -599,7 +617,7 @@ restoreDefaultsButton.addEventListener('click', () => {
     const restored = await resetSettings();
     fillSettingsForm(restored);
     setSettingsStatus(
-      `Restored defaults (top results ${DEFAULT_SETTINGS.topResults}, max seeds ${DEFAULT_SETTINGS.maxSeeds}, max negative seeds ${DEFAULT_SETTINGS.maxNegativeSeeds}, λ ${DEFAULT_SETTINGS.negativeRelevanceLambda}).`,
+      `Restored defaults (top results ${DEFAULT_SETTINGS.topResults}, max seeds ${DEFAULT_SETTINGS.maxSeeds}, max negative seeds ${DEFAULT_SETTINGS.maxNegativeSeeds}, λ ${DEFAULT_SETTINGS.negativeRelevanceLambda}, A* think ${DEFAULT_SETTINGS.queryAStarMaxThinkMs / 1000}s).`,
     );
     setPermeabilityStatus('Permeability filters restored to defaults (no active filters).');
     setThemeStatus('Theme restored to System.');

@@ -30,6 +30,8 @@ export interface QuerySearchContext {
   tagTypes?: ReadonlyMap<string, string>;
   branchK?: number;
   depthLambda?: number;
+  /** Wall-clock budget in ms; omit for uncapped (node/depth limits only). */
+  maxThinkMs?: number;
 }
 
 export function emptyQueryState(): QueryState {

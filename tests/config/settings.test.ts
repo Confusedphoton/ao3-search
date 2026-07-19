@@ -19,6 +19,7 @@ describe('normalizeSettings', () => {
         maxSeeds: 999,
         maxNegativeSeeds: -3,
         negativeRelevanceLambda: 100,
+        queryAStarMaxThinkMs: 999_999,
       }),
     ).toEqual({
       topResults: SETTINGS_BOUNDS.topResults.min,
@@ -27,6 +28,7 @@ describe('normalizeSettings', () => {
       negativeRelevanceLambda: SETTINGS_BOUNDS.negativeRelevanceLambda.max,
       theme: 'system',
       expansionPolicy: 'topological',
+      queryAStarMaxThinkMs: SETTINGS_BOUNDS.queryAStarMaxThinkMs.max,
       permeability: DEFAULT_SETTINGS.permeability,
     });
   });
@@ -40,6 +42,7 @@ describe('normalizeSettings', () => {
         negativeRelevanceLambda: 1.5,
         theme: 'dark',
         expansionPolicy: 'topological',
+        queryAStarMaxThinkMs: 5000,
       }),
     ).toEqual({
       topResults: 40,
@@ -48,6 +51,7 @@ describe('normalizeSettings', () => {
       negativeRelevanceLambda: 1.5,
       theme: 'dark',
       expansionPolicy: 'topological',
+      queryAStarMaxThinkMs: 5000,
       permeability: DEFAULT_SETTINGS.permeability,
     });
   });
@@ -60,6 +64,11 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ expansionPolicy: 'topo-query' }).expansionPolicy).toBe(
       'topo-query',
     );
+  });
+
+  it('defaults A* think time to the AO3 request delay', () => {
+    expect(DEFAULT_SETTINGS.queryAStarMaxThinkMs).toBe(2500);
+    expect(normalizeSettings({}).queryAStarMaxThinkMs).toBe(2500);
   });
 
   it('falls back to system theme for invalid values', () => {

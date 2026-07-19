@@ -22,6 +22,11 @@ export const QUERY_ASTAR_BRANCH_K = 4;
 export const QUERY_ASTAR_MAX_NODES = 256;
 /** Depth penalty weight in best-first score: fragilityProxy − λ·depth. */
 export const QUERY_ASTAR_DEPTH_LAMBDA = 0.05;
+/**
+ * Default wall-clock budget for topo-query A* per propose().
+ * Matches AO3 request spacing so thinking fills the rate-limit gap by default.
+ */
+export const QUERY_ASTAR_MAX_THINK_MS = REQUEST_INTERVAL_MS;
 /** Stop when β₀/β₁ are unchanged for this many expansions and topology is trivial. */
 export const TOPOLOGY_STABLE_ITERS = 2;
 /** Max superlevel thresholds sampled for neighborhood extraction. */

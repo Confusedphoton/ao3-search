@@ -2,7 +2,7 @@
   "name": "ao3-search",
   "description": "AO3 semantic search via graph-based query propagation",
   "private": true,
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "wxt",

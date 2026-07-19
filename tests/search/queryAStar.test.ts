@@ -222,6 +222,17 @@ describe('runQueryAStar', () => {
     expect(result.action!.meta?.depth).toBeGreaterThan(0);
   });
 
+  it('stops expanding when the think budget elapses', () => {
+    const ctx = queryCtxFromSnapshot(searchSnapshot());
+    ctx.maxThinkMs = 0;
+    const result = runQueryAStar(ctx);
+    expect(result.timedOut).toBe(true);
+    expect(result.nodesExpanded).toBe(0);
+    // Depth-0 incumbent is still available before the timed deeper search.
+    expect(result.action).not.toBeNull();
+    expect(result.action!.meta?.kind).toBe('node');
+  });
+
   it('leafScore uses bound-node fragility or mean of includes', () => {
     const fragility = new Float64Array([0, 4, 6]);
     expect(

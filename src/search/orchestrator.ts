@@ -99,9 +99,10 @@ export class SearchOrchestrator {
     const continuing = options.continueFromRequests > 0;
     const forceExpand = options.forceExpand ?? false;
     const settings = await loadSettings();
-    const { topResults, negativeRelevanceLambda, permeability, expansionPolicy } = settings;
+    const { topResults, negativeRelevanceLambda, permeability, expansionPolicy, queryAStarMaxThinkMs } =
+      settings;
     if (!this.policyOverride) {
-      this.policy = createExpansionPolicy(expansionPolicy);
+      this.policy = createExpansionPolicy(expansionPolicy, { queryAStarMaxThinkMs });
     }
     const topologyTracker = new TopologyStabilityTracker(TOPOLOGY_STABLE_ITERS);
     const positiveKeys = seeds.map((s) => {

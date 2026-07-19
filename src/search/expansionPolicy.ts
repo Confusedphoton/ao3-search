@@ -149,8 +149,18 @@ export function isNodeExpandable(
 
 export type ExpansionPolicyKind = 'expected-info' | 'topological' | 'topo-query';
 
-export function createExpansionPolicy(kind: ExpansionPolicyKind): ExpansionPolicy {
+export interface ExpansionPolicyOptions {
+  /** Wall-clock budget for topo-query A* (ms). Ignored by other policies. */
+  queryAStarMaxThinkMs?: number;
+}
+
+export function createExpansionPolicy(
+  kind: ExpansionPolicyKind,
+  options: ExpansionPolicyOptions = {},
+): ExpansionPolicy {
   if (kind === 'topological') return new TopologicalExpansionPolicy();
-  if (kind === 'topo-query') return new TopologicalQueryExpansionPolicy();
+  if (kind === 'topo-query') {
+    return new TopologicalQueryExpansionPolicy(options.queryAStarMaxThinkMs);
+  }
   return new DefaultExpansionPolicy();
 }
