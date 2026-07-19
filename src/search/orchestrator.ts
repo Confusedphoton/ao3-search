@@ -22,7 +22,6 @@ import { loadGraphSnapshot } from '../storage/db';
 import { RequestHandler } from '../scheduler/requestHandler';
 import {
   createExpansionPolicy,
-  selectNextPlan,
   type ExpansionPolicy,
 } from './expansionPolicy';
 import { buildFrontier } from './frontier';
@@ -240,6 +239,7 @@ export class SearchOrchestrator {
         authority,
         precision,
         rowOutFractions: csr.rowOutFractions,
+        exploratory: forceExpand,
       };
       const frontier = this.policy.buildFrontier(policyCtx);
       const topo = this.policy.topologySnapshot?.() ?? null;
@@ -268,10 +268,20 @@ export class SearchOrchestrator {
       }
       if (!forceExpand && topoStable) break;
 
-      const plan = selectNextPlan(csr, frontier, { exploratory: forceExpand });
-      if (!plan) break;
+      const action = this.policy.propose(policyCtx, frontier);
+      if (!action) break;
 
-      const outcome = await this.handler.execute(plan);
+      if (action.meta?.kind === 'worksSearch') {
+        await onProgress({
+          phase: 'expanding',
+          requestsUsed,
+          expansionBudget,
+          frontierSize: frontier.length,
+          message: `Fetching works search${topoLabel}`,
+        });
+      }
+
+      const outcome = await this.handler.execute(action.plan);
       requestsUsed += outcome.requestCount;
 
       if (this.cancelled) break;

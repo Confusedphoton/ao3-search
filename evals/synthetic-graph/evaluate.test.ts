@@ -64,6 +64,29 @@ describe('evaluateFogOfWarSearch', () => {
     expect(report.seeds[0].depths.length).toBeGreaterThan(0);
     expect(report.overallMeanNdcg).toBeGreaterThanOrEqual(0);
   });
+
+  it('can evaluate the topo-query expansion policy', () => {
+    const corpus = buildEvalCorpus({
+      communities: 2,
+      worksPerCommunity: 10,
+      localTagsPerCommunity: 3,
+      bridgeTags: 1,
+      authorsPerCommunity: 2,
+      bridgeWorks: 1,
+      seed: 11,
+    });
+    const report = evaluateFogOfWarSearch(corpus, {
+      depths: [3, 6],
+      ks: [5, 10],
+      seedKeys: [corpus.targetSeedKeys[0]],
+      policy: 'topo-query',
+    });
+
+    expect(report.policy).toBe('topo-query');
+    expect(report.seeds[0].expansionsCompleted).toBeGreaterThanOrEqual(3);
+    expect(report.seeds[0].depths.length).toBeGreaterThan(0);
+    expect(report.overallMeanNdcg).toBeGreaterThanOrEqual(0);
+  });
 });
 
 describe('evaluateWarmStartFogOfWarSearch', () => {

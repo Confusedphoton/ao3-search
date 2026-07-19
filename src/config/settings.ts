@@ -18,7 +18,7 @@ export const SETTINGS_STORAGE_KEY = 'tunableSettings';
 
 export type FilterMode = 'whitelist' | 'blacklist';
 export type ThemePreference = 'light' | 'dark' | 'system';
-export type ExpansionPolicyKind = 'expected-info' | 'topological';
+export type ExpansionPolicyKind = 'expected-info' | 'topological' | 'topo-query';
 
 export interface CategoryPermeabilityFilter {
   mode: FilterMode;
@@ -103,7 +103,10 @@ function normalizeTheme(value: unknown): ThemePreference {
 }
 
 function normalizeExpansionPolicy(value: unknown): ExpansionPolicyKind {
-  return value === 'expected-info' ? 'expected-info' : 'topological';
+  if (value === 'expected-info' || value === 'topo-query' || value === 'topological') {
+    return value;
+  }
+  return 'topological';
 }
 
 function normalizeFilterValues(

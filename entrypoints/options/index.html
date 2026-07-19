@@ -58,12 +58,14 @@
             <label for="setting-expansion-policy">Expansion policy</label>
             <select id="setting-expansion-policy" name="expansionPolicy">
               <option value="topological">Topological fragility (default)</option>
+              <option value="topo-query">Topological query A*</option>
               <option value="expected-info">Expected information</option>
             </select>
             <p class="field-hint">
               How the next AO3 page to fetch is chosen. Ranking of results stays relevance-based
-              either way. Topological fragility (default) is slower but yields higher-quality
-              expansion choices; switch to expected information if searches feel too slow.
+              either way. Topological fragility (default) ranks expandable nodes; topological
+              query A* also constructs /works/search queries via iterative deepening. Expected
+              information is faster but usually lower-quality expansion choices.
             </p>
           </div>
 

@@ -1,6 +1,6 @@
 import type { ExpansionPolicyKind } from '@/src/search/expansionPolicy';
 
-export const EVAL_POLICY_KINDS = ['expected-info', 'topological'] as const;
+export const EVAL_POLICY_KINDS = ['expected-info', 'topological', 'topo-query'] as const;
 
 export const EVAL_POLICY_ENV = 'EVAL_POLICY';
 

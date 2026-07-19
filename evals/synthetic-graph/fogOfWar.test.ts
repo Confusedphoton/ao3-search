@@ -61,6 +61,33 @@ describe('fog-of-war exploration', () => {
     expect(fog.explored.size).toBe(1 + 8);
   });
 
+  it('selects expansions under the topo-query policy', () => {
+    const corpus = buildEvalCorpus({
+      communities: 2,
+      worksPerCommunity: 8,
+      localTagsPerCommunity: 3,
+      bridgeTags: 1,
+      authorsPerCommunity: 2,
+      bridgeWorks: 2,
+      seed: 17,
+    });
+    const seedKey = corpus.targetSeedKeys[0];
+    const fog = FogOfWar.fromSeed(corpus.graph, corpus.graph.work(seedKey));
+    const policy = createExpansionPolicy('topo-query');
+    const sizes = [fog.visible.size];
+
+    for (let step = 0; step < 6; step++) {
+      const next = selectNextExpansion(fog, policy, fog.observe(seedKey));
+      expect(next).not.toBeNull();
+      expect(fog.visible.has(next!)).toBe(true);
+      fog.expand(next!);
+      sizes.push(fog.visible.size);
+    }
+
+    expect(sizes[sizes.length - 1]).toBeGreaterThan(sizes[0]);
+    expect(fog.explored.size).toBe(1 + 6);
+  });
+
   it('marks unexplored frontier rows as open (leaky)', () => {
     const corpus = buildEvalCorpus({
       communities: 2,

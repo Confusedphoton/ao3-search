@@ -12,6 +12,16 @@ export const EXPANSION_BUDGET = 20;
 export const MIN_FRONTIER_EXPECTED_INFO = 1e-5;
 /** Early-stop threshold for topological fragility acquisition. */
 export const MIN_FRONTIER_FRAGILITY = 1e-8;
+/** Early-stop threshold for topo-query A* acquisition. */
+export const MIN_FRONTIER_QUERY_SCORE = 1e-8;
+/** Max query-construction depth for topo-query iterative deepening. */
+export const QUERY_ASTAR_MAX_DEPTH = 3;
+/** Max children expanded per operator at each A* node. */
+export const QUERY_ASTAR_BRANCH_K = 4;
+/** Hard cap on A* nodes expanded per propose() call. */
+export const QUERY_ASTAR_MAX_NODES = 256;
+/** Depth penalty weight in best-first score: fragilityProxy − λ·depth. */
+export const QUERY_ASTAR_DEPTH_LAMBDA = 0.05;
 /** Stop when β₀/β₁ are unchanged for this many expansions and topology is trivial. */
 export const TOPOLOGY_STABLE_ITERS = 2;
 /** Max superlevel thresholds sampled for neighborhood extraction. */

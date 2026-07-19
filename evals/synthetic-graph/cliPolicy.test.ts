@@ -8,6 +8,7 @@ describe('cliPolicy', () => {
 
   it('reads EVAL_POLICY', () => {
     expect(resolveEvalPolicy({ EVAL_POLICY: 'topological' })).toBe('topological');
+    expect(resolveEvalPolicy({ EVAL_POLICY: 'topo-query' })).toBe('topo-query');
   });
 
   it('rejects unknown policies', () => {
@@ -21,6 +22,10 @@ describe('cliPolicy', () => {
     });
     expect(takePolicyArg(['-p', 'expected-info', '-t', 'small'])).toEqual({
       policy: 'expected-info',
+      rest: ['-t', 'small'],
+    });
+    expect(takePolicyArg(['--policy=topo-query', '-t', 'small'])).toEqual({
+      policy: 'topo-query',
       rest: ['-t', 'small'],
     });
   });

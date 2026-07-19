@@ -5,13 +5,14 @@
  *
  * Usage:
  *   npm run eval:synthetic-graph -- --policy=topological
+ *   npm run eval:synthetic-graph -- --policy=topo-query
  *   npm run eval:synthetic-graph -- -p expected-info -t "small corpus"
  */
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-const POLICY_KINDS = new Set(['expected-info', 'topological']);
+const POLICY_KINDS = new Set(['expected-info', 'topological', 'topo-query']);
 
 function takePolicyArg(argv) {
   const rest = [];
@@ -44,7 +45,7 @@ function takePolicyArg(argv) {
       console.log(`Usage: npm run eval:synthetic-graph -- [options] [vitest args]
 
 Options:
-  -p, --policy <kind>   Expansion policy: expected-info (default) | topological
+  -p, --policy <kind>   Expansion policy: expected-info (default) | topological | topo-query
   -h, --help            Show this help
 
 Any other args are passed through to Vitest (e.g. -t "small corpus", -t "warm-start").

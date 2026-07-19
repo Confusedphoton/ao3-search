@@ -35,5 +35,23 @@ export {
 } from './fragility';
 export {
   TopologicalExpansionPolicy,
+  frontierFromFragility,
   type TopologicalPolicyState,
 } from './TopologicalExpansionPolicy';
+export { TopologicalQueryExpansionPolicy } from './TopologicalQueryExpansionPolicy';
+export { runTopologyPipeline, type TopologyPipelineResult } from './topologyPipeline';
+export {
+  runQueryAStar,
+  type QueryAStarResult,
+} from './queryAStar';
+export {
+  emptyQueryState,
+  queryStateKey,
+  leafScore,
+  expandQueryStates,
+  toFetchPlan,
+  queryStateToSearchParams,
+  bestNodeBindState,
+  type QueryState,
+  type QuerySearchContext,
+} from './queryState';

@@ -38,6 +38,7 @@ const EVAL_POLICY = resolveEvalPolicy();
  * Intensive fog-of-war NDCG evaluation under a fixed expansion budget.
  * Excluded from `npm test` — run via:
  *   npm run eval:synthetic-graph -- --policy=topological
+ *   npm run eval:synthetic-graph -- --policy=topo-query
  */
 describe('synthetic graph fog-of-war NDCG evaluation', () => {
   for (const { size, maxSeeds, timeoutMs } of CORPUS_EVAL_CASES) {

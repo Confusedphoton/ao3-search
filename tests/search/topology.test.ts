@@ -24,6 +24,7 @@ import {
   computeFragilityAll,
 } from '@/src/search/topology/fragility';
 import { TopologicalExpansionPolicy } from '@/src/search/topology/TopologicalExpansionPolicy';
+import { TopologicalQueryExpansionPolicy } from '@/src/search/topology/TopologicalQueryExpansionPolicy';
 import { createExpansionPolicy, selectNextPlan } from '@/src/search/expansionPolicy';
 import type { Hypothesis } from '@/src/search/topology/neighborhoods';
 
@@ -300,8 +301,16 @@ describe('TopologicalExpansionPolicy', () => {
     const originalRandom = Math.random;
     Math.random = () => 0.99; // force greedy
     const plan = selectNextPlan(csr, frontier);
+    const action = policy.propose({
+      csr,
+      relevance,
+      authority,
+      precision,
+      rowOutFractions: rowOut,
+    });
     Math.random = originalRandom;
     expect(plan).not.toBeNull();
+    expect(action?.plan).toEqual(plan);
   });
 
   it('still ranks every expandable node when all fragility scores are zero', () => {
@@ -335,6 +344,7 @@ describe('TopologicalExpansionPolicy', () => {
   it('createExpansionPolicy switches implementations', () => {
     expect(createExpansionPolicy('expected-info').minAcquisitionScore).toBeGreaterThan(0);
     expect(createExpansionPolicy('topological')).toBeInstanceOf(TopologicalExpansionPolicy);
+    expect(createExpansionPolicy('topo-query')).toBeInstanceOf(TopologicalQueryExpansionPolicy);
   });
 });
 

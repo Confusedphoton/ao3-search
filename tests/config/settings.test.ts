@@ -56,6 +56,12 @@ describe('normalizeSettings', () => {
     expect(normalizeSettings({ expansionPolicy: 'beam' }).expansionPolicy).toBe('topological');
   });
 
+  it('accepts topo-query expansion policy', () => {
+    expect(normalizeSettings({ expansionPolicy: 'topo-query' }).expansionPolicy).toBe(
+      'topo-query',
+    );
+  });
+
   it('falls back to system theme for invalid values', () => {
     expect(normalizeSettings({ theme: 'neon' }).theme).toBe('system');
     expect(normalizeSettings({ theme: 'light' }).theme).toBe('light');
