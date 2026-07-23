@@ -16,6 +16,7 @@ import {
   CORPUS_SIZE_PRESETS,
   type CorpusSizePreset,
 } from './corpus';
+import { resolveMeasurementPerturb } from './measurementNoise';
 
 interface CorpusEvalCase {
   size: CorpusSizePreset;
@@ -33,12 +34,14 @@ const CORPUS_EVAL_CASES: CorpusEvalCase[] = [
 ];
 
 const EVAL_POLICY = resolveEvalPolicy();
+const EVAL_PERTURB = resolveMeasurementPerturb();
 
 /**
  * Intensive fog-of-war NDCG evaluation under a fixed expansion budget.
  * Excluded from `npm test` — run via:
  *   npm run eval:synthetic-graph -- --policy=topological
  *   npm run eval:synthetic-graph -- --policy=topo-query
+ *   npm run eval:synthetic-graph -- --no-perturb
  */
 describe('synthetic graph fog-of-war NDCG evaluation', () => {
   for (const { size, maxSeeds, timeoutMs } of CORPUS_EVAL_CASES) {
@@ -46,7 +49,10 @@ describe('synthetic graph fog-of-war NDCG evaluation', () => {
       `scores policy-guided fog-of-war search at expansion budgets (${size} corpus)`,
       () => {
         const config = CORPUS_SIZE_PRESETS[size];
-        const corpus = buildEvalCorpus(config);
+        const corpus = buildEvalCorpus({
+          ...config,
+          perturbMeasurement: EVAL_PERTURB,
+        });
         const seedKeys = corpus.targetSeedKeys.slice(0, maxSeeds);
         const report = evaluateFogOfWarSearch(corpus, {
           depths: DEFAULT_DEPTHS,
@@ -59,6 +65,7 @@ describe('synthetic graph fog-of-war NDCG evaluation', () => {
 
         expect(report.corpus.works).toBeGreaterThan(CORPUS_SIZE_MIN_WORKS[size]);
         expect(report.policy).toBe(EVAL_POLICY);
+        expect(report.measurementPerturbed).toBe(EVAL_PERTURB);
         expect(report.seeds.length).toBe(seedKeys.length);
         expect(report.overallMeanNdcg).toBeGreaterThan(0);
         expect(report.overallMeanNdcg).toBeLessThanOrEqual(1);
@@ -100,7 +107,10 @@ describe('synthetic graph warm-start fog-of-war NDCG evaluation', () => {
       `scores switched-seed search from conditioned partial graphs (${size} corpus)`,
       () => {
         const config = CORPUS_SIZE_PRESETS[size];
-        const corpus = buildEvalCorpus(config);
+        const corpus = buildEvalCorpus({
+          ...config,
+          perturbMeasurement: EVAL_PERTURB,
+        });
         const seedKeys = corpus.targetSeedKeys.slice(0, Math.max(2, maxSeeds));
         const report = evaluateWarmStartFogOfWarSearch(corpus, {
           initialDepths: DEFAULT_INITIAL_DEPTHS,
@@ -114,6 +124,7 @@ describe('synthetic graph warm-start fog-of-war NDCG evaluation', () => {
 
         expect(report.corpus.works).toBeGreaterThan(CORPUS_SIZE_MIN_WORKS[size]);
         expect(report.policy).toBe(EVAL_POLICY);
+        expect(report.measurementPerturbed).toBe(EVAL_PERTURB);
         expect(report.initialDepths).toEqual([...DEFAULT_INITIAL_DEPTHS]);
         expect(report.depths).toEqual([...DEFAULT_DEPTHS]);
         expect(report.pairs.length).toBe(seedKeys.length);

@@ -27,6 +27,7 @@ describe('evaluateFogOfWarSearch', () => {
     });
 
     expect(report.policy).toBe('expected-info');
+    expect(report.measurementPerturbed).toBe(true);
     expect(report.depths).toEqual([2, 4, 6]);
     expect(report.seeds).toHaveLength(2);
     expect(report.overallMeanNdcg).toBeGreaterThan(0);
@@ -86,6 +87,28 @@ describe('evaluateFogOfWarSearch', () => {
     expect(report.seeds[0].expansionsCompleted).toBeGreaterThanOrEqual(3);
     expect(report.seeds[0].depths.length).toBeGreaterThan(0);
     expect(report.overallMeanNdcg).toBeGreaterThanOrEqual(0);
+  });
+
+  it('can evaluate without measurement perturbation', () => {
+    const corpus = buildEvalCorpus({
+      communities: 2,
+      worksPerCommunity: 10,
+      localTagsPerCommunity: 3,
+      bridgeTags: 1,
+      authorsPerCommunity: 2,
+      bridgeWorks: 1,
+      seed: 9,
+      perturbMeasurement: false,
+    });
+    const report = evaluateFogOfWarSearch(corpus, {
+      depths: [3, 6],
+      ks: [5, 10],
+      seedKeys: [corpus.targetSeedKeys[0]],
+      policy: 'expected-info',
+    });
+
+    expect(report.measurementPerturbed).toBe(false);
+    expect(report.overallMeanNdcg).toBeGreaterThan(0);
   });
 });
 

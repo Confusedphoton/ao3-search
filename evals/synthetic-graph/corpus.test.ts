@@ -14,6 +14,8 @@ describe('eval corpus size presets', () => {
     expect(corpus.workKeys.length).toBeGreaterThan(CORPUS_SIZE_MIN_WORKS[size]);
     expect(corpus.targetSeedKeys.length).toBeGreaterThan(0);
     expect(corpus.graph.nodeCount).toBeGreaterThan(corpus.workKeys.length);
-    expect(corpus.config).toEqual(CORPUS_SIZE_PRESETS[size]);
+    expect(corpus.config).toMatchObject(CORPUS_SIZE_PRESETS[size]);
+    expect(corpus.measurementPerturbed).toBe(true);
+    expect(corpus.latentGraph.nodeCount).toBe(corpus.graph.nodeCount);
   });
 });

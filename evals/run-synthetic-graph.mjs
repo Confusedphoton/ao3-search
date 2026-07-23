@@ -1,12 +1,13 @@
 #!/usr/bin/env node
 /**
- * Vitest rejects unknown flags, so this wrapper peels off `--policy` / `-p`
+ * Vitest rejects unknown flags, so this wrapper peels off eval-specific flags
  * and forwards the rest to the synthetic-graph eval suite.
  *
  * Usage:
  *   npm run eval:synthetic-graph -- --policy=topological
  *   npm run eval:synthetic-graph -- --policy=topo-query
  *   npm run eval:synthetic-graph -- -p expected-info -t "small corpus"
+ *   npm run eval:synthetic-graph -- --no-perturb -t "small corpus"
  */
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -14,9 +15,10 @@ import path from 'node:path';
 
 const POLICY_KINDS = new Set(['expected-info', 'topological', 'topo-query']);
 
-function takePolicyArg(argv) {
+function takeEvalArgs(argv) {
   const rest = [];
   let policy;
+  let perturb;
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--policy' || arg === '-p') {
@@ -41,11 +43,21 @@ function takePolicyArg(argv) {
       policy = value;
       continue;
     }
+    if (arg === '--no-perturb') {
+      perturb = false;
+      continue;
+    }
+    if (arg === '--perturb') {
+      perturb = true;
+      continue;
+    }
     if (arg === '--help' || arg === '-h') {
       console.log(`Usage: npm run eval:synthetic-graph -- [options] [vitest args]
 
 Options:
   -p, --policy <kind>   Expansion policy: expected-info (default) | topological | topo-query
+  --perturb             Enable measurement noise on the observed graph (default)
+  --no-perturb          Disable measurement noise (oracle recovery on the clean graph)
   -h, --help            Show this help
 
 Any other args are passed through to Vitest (e.g. -t "small corpus", -t "warm-start").
@@ -54,14 +66,15 @@ Any other args are passed through to Vitest (e.g. -t "small corpus", -t "warm-st
     }
     rest.push(arg);
   }
-  return { policy, rest };
+  return { policy, perturb, rest };
 }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const { policy, rest } = takePolicyArg(process.argv.slice(2));
+const { policy, perturb, rest } = takeEvalArgs(process.argv.slice(2));
 
 const env = { ...process.env };
 if (policy) env.EVAL_POLICY = policy;
+if (perturb !== undefined) env.EVAL_PERTURB = perturb ? '1' : '0';
 
 const result = spawnSync(
   process.execPath,

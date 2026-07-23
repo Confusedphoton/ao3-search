@@ -62,6 +62,8 @@ export interface EvaluationReport {
     seedCount: number;
   };
   policy: string;
+  measurementPerturbed: boolean;
+  measurementNoiseSigma: number;
   ks: number[];
   depths: number[];
   seeds: SeedEvaluation[];
@@ -103,12 +105,12 @@ function bootstrapGroundTruth(
   corpus: EvalCorpus,
   seedKey: string,
 ): { gains: Map<string, number>; eccentricity: number } {
-  const seedIndex = corpus.graph.work(seedKey);
+  const seedIndex = corpus.latentGraph.work(seedKey);
   const result = runQueryPropagation(
-    corpus.graph.queryInput({ positive: { works: [seedKey] } }),
+    corpus.latentGraph.queryInput({ positive: { works: [seedKey] } }),
   );
-  const gains = workGainMap(corpus.graph, result.relevance, new Set([seedKey]));
-  const distances = bfsDistances(corpus.graph.csr!, seedIndex);
+  const gains = workGainMap(corpus.latentGraph, result.relevance, new Set([seedKey]));
+  const distances = bfsDistances(corpus.latentGraph.csr!, seedIndex);
   return {
     gains,
     eccentricity: maxFiniteDistance(distances),
@@ -233,6 +235,8 @@ export function evaluateFogOfWarSearch(
       seedCount: seedKeys.length,
     },
     policy: policyLabel,
+    measurementPerturbed: corpus.measurementPerturbed,
+    measurementNoiseSigma: corpus.measurementNoiseSigma,
     ks,
     depths: requestedDepths,
     seeds,
@@ -251,6 +255,11 @@ export function formatEvaluationReport(report: EvaluationReport): string {
     `Corpus: ${report.corpus.works} works, ${report.corpus.tags} tags, ${report.corpus.authors} authors, ${report.corpus.communities} communities, ${report.corpus.seedCount} seeds`,
   );
   lines.push(`Policy: ${report.policy}`);
+  lines.push(
+    report.measurementPerturbed
+      ? `Measurement noise: on (σ=${report.measurementNoiseSigma})`
+      : 'Measurement noise: off',
+  );
   lines.push(`K sweep: ${report.ks.join(', ')} (score = mean NDCG@K)`);
   lines.push(`Expansion budgets: ${report.depths.join(', ')}`);
   lines.push('');
@@ -326,6 +335,8 @@ export interface WarmStartPairEvaluation {
 export interface WarmStartEvaluationReport {
   corpus: EvaluationReport['corpus'];
   policy: string;
+  measurementPerturbed: boolean;
+  measurementNoiseSigma: number;
   ks: number[];
   initialDepths: number[];
   depths: number[];
@@ -507,6 +518,8 @@ export function evaluateWarmStartFogOfWarSearch(
       seedCount: seedPairs.length,
     },
     policy: policyLabel,
+    measurementPerturbed: corpus.measurementPerturbed,
+    measurementNoiseSigma: corpus.measurementNoiseSigma,
     ks,
     initialDepths,
     depths: measureDepths,
@@ -523,6 +536,11 @@ export function formatWarmStartEvaluationReport(report: WarmStartEvaluationRepor
     `Corpus: ${report.corpus.works} works, ${report.corpus.tags} tags, ${report.corpus.authors} authors, ${report.corpus.communities} communities, ${report.corpus.seedCount} pairs`,
   );
   lines.push(`Policy: ${report.policy}`);
+  lines.push(
+    report.measurementPerturbed
+      ? `Measurement noise: on (σ=${report.measurementNoiseSigma})`
+      : 'Measurement noise: off',
+  );
   lines.push(`K sweep: ${report.ks.join(', ')} (score = mean NDCG@K on measure query only)`);
   lines.push(`Initial (conditioning) budgets: ${report.initialDepths.join(', ')}`);
   lines.push(`Measure budgets: ${report.depths.join(', ')}`);

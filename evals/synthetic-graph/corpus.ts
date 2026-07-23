@@ -5,6 +5,10 @@ import {
   type SyntheticTagInput,
   type SyntheticWorkInput,
 } from '../../tests/fixtures/syntheticGraph';
+import {
+  createObservedGraph,
+  DEFAULT_MEASUREMENT_NOISE_SIGMA,
+} from './measurementNoise';
 
 export interface CorpusConfig {
   /** Number of thematic communities. */
@@ -21,6 +25,13 @@ export interface CorpusConfig {
   bridgeWorks: number;
   /** RNG seed for reproducible corpora. */
   seed: number;
+  /**
+   * When true (default), `graph` is a noisy measurement of `latentGraph`.
+   * Disable for noiseless oracle recovery experiments.
+   */
+  perturbMeasurement?: boolean;
+  /** Log-normal σ for measurement noise when perturbation is on. */
+  measurementNoiseSigma?: number;
 }
 
 export const DEFAULT_CORPUS_CONFIG: CorpusConfig = {
@@ -89,8 +100,17 @@ export const CORPUS_SIZE_MIN_WORKS: Record<CorpusSizePreset, number> = {
 };
 
 export interface EvalCorpus {
+  /**
+   * Observed graph used for fog-of-war search.
+   * Equals `latentGraph` when measurement perturbation is off.
+   */
   graph: SyntheticGraph;
+  /** Clean latent graph used for NDCG ground-truth relevance. */
+  latentGraph: SyntheticGraph;
   config: CorpusConfig;
+  /** Whether `graph` carries measurement noise relative to `latentGraph`. */
+  measurementPerturbed: boolean;
+  measurementNoiseSigma: number;
   /** Work keys suitable as evaluation seeds (one per community + a few bridge works). */
   targetSeedKeys: string[];
   /** All work keys in the corpus. */
@@ -126,9 +146,18 @@ function wordCountFor(rng: () => number): number {
 /**
  * Build a closed, fully-explored synthetic AO3-like graph with community structure.
  * Tag/author frequencies equal true degrees so fog-of-war frontiers leak mass correctly.
+ * By default also builds a measurement-noisy observed copy for search.
  */
 export function buildEvalCorpus(config: Partial<CorpusConfig> = {}): EvalCorpus {
-  const cfg: CorpusConfig = { ...DEFAULT_CORPUS_CONFIG, ...config };
+  const perturbMeasurement = config.perturbMeasurement ?? true;
+  const measurementNoiseSigma =
+    config.measurementNoiseSigma ?? DEFAULT_MEASUREMENT_NOISE_SIGMA;
+  const cfg: CorpusConfig = {
+    ...DEFAULT_CORPUS_CONFIG,
+    ...config,
+    perturbMeasurement,
+    measurementNoiseSigma,
+  };
   const rng = mulberry32(cfg.seed);
 
   const bridgeTagKeys = Array.from({ length: cfg.bridgeTags }, (_, i) => `bridge-tag-${i}`);
@@ -236,9 +265,21 @@ export function buildEvalCorpus(config: Partial<CorpusConfig> = {}): EvalCorpus 
   for (const author of authors) builder.author(author);
   for (const work of works) builder.work(work);
 
+  const latentGraph = builder.build();
+  const graph = perturbMeasurement
+    ? createObservedGraph(latentGraph, {
+        sigma: measurementNoiseSigma,
+        // Offset from layout seed so layout RNG state and noise stay independent.
+        seed: (cfg.seed + 0x9e3779b9) >>> 0,
+      })
+    : latentGraph;
+
   return {
-    graph: builder.build(),
+    graph,
+    latentGraph,
     config: cfg,
+    measurementPerturbed: perturbMeasurement,
+    measurementNoiseSigma,
     targetSeedKeys,
     workKeys,
     communityOfWork,

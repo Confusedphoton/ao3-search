@@ -2,6 +2,7 @@ import { buildCSR, type CSRGraph } from '@/src/graph/csr';
 import { normalizeExplorationFields } from '@/src/graph/exploration';
 import { NodeKind, type AuthorWorkEdge, type GraphEdge, type GraphNode } from '@/src/graph/types';
 import { SyntheticGraph } from '../../tests/fixtures/syntheticGraph';
+import { restoreParentWeightsAndOrder } from './measurementNoise';
 
 /** Shared with fog-of-war policy `now` so complete hubs are not stale-rechecked. */
 export const FOG_MATERIALIZE_EXPLORED_AT = 1_000_000;
@@ -107,7 +108,9 @@ export function induceVisibleSubgraph(
     }
   }
 
-  return SyntheticGraph.fromCsr(buildCSR({ nodes, edges, authorEdges }));
+  const induced = SyntheticGraph.fromCsr(buildCSR({ nodes, edges, authorEdges }));
+  restoreParentWeightsAndOrder(csr, induced.csr!);
+  return induced;
 }
 
 /**
